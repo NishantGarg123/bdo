@@ -32,11 +32,20 @@ export const authAPI = {
 };
 
 export const dashboardAPI = {
-  getStats: () => api.get('/dashboard/'),
+  getStats: () => api.get('/dashboard/', {
+    // Dashboard values can change outside this browser session (for example,
+    // when a lead is updated directly in the database).
+    headers: { 'Cache-Control': 'no-cache' },
+    params: { _t: Date.now() },
+  }),
 };
 
 export const leadsAPI = {
-  getAll: (params) => api.get('/leads/', { params }),
+  getAll: (params = {}) => api.get('/leads/', {
+    // Do not allow a browser or intermediary to return an older lead list.
+    headers: { 'Cache-Control': 'no-cache' },
+    params: { ...params, _t: Date.now() },
+  }),
   create: (data) => api.post('/leads/', data),
   getById: (id) => api.get(`/leads/${id}/`),
   update: (id, data) => api.patch(`/leads/${id}/`, data),

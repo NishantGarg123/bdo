@@ -2,23 +2,40 @@ import { useEffect, useState } from 'react';
 import StatCard from '../../components/StatCard';
 import { dashboardAPI } from '../../services/api';
 
+const REFRESH_INTERVAL_MS = 15_000;
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     const loadStats = async () => {
       try {
         const response = await dashboardAPI.getStats();
-        setStats(response.data);
+        if (mounted) setStats(response.data);
       } catch (err) {
         console.error('Failed to load dashboard stats:', err);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     loadStats();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') loadStats();
+    };
+    const intervalId = window.setInterval(refreshWhenVisible, REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, []);
 
   if (loading) {

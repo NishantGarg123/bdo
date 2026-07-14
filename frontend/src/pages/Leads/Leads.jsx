@@ -3,6 +3,8 @@ import SkillChips from '../../components/SkillChips';
 import StatusBadge from '../../components/StatusBadge';
 import { leadsAPI } from '../../services/api';
 
+const REFRESH_INTERVAL_MS = 15_000;
+
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
   { value: 'pending', label: 'Pending' },
@@ -128,6 +130,22 @@ export default function Leads() {
 
   useEffect(() => {
     loadLeads();
+  }, [loadLeads]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') loadLeads();
+    };
+
+    const intervalId = window.setInterval(refreshWhenVisible, REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [loadLeads]);
 
   const resetForm = () => {
