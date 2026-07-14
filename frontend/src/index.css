@@ -766,6 +766,50 @@ textarea {
   color: var(--color-text);
 }
 
+.apply-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.apply-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 560px);
+  overflow-y: auto;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: slide-in-from-right 180ms ease-out;
+}
+
+.apply-drawer .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+}
+
+.apply-drawer .modal-actions {
+  padding: 0 24px 24px;
+  margin: 0;
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
 .modal-form {
   padding: 24px;
 }
@@ -1013,5 +1057,10 @@ textarea {
 
   .integrations-grid {
     grid-template-columns: 1fr;
+  }
+
+  .apply-drawer {
+    width: 100%;
+    border-radius: 0;
   }
 }

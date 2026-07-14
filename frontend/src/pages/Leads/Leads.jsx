@@ -155,6 +155,17 @@ export default function Leads() {
     };
   }, [applyingLead]);
 
+  useEffect(() => {
+    if (!applyingLead) return undefined;
+
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setApplyingLead(null);
+    };
+
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [applyingLead]);
+
   const resetForm = () => {
     setFormData({
       ...EMPTY_FORM,
@@ -476,12 +487,18 @@ export default function Leads() {
       )}
 
       {applyingLead && (
-        <div className="modal-overlay" onClick={() => setApplyingLead(null)}>
-          <div className="modal modal--lg" onClick={(e) => e.stopPropagation()}>
+        <div className="apply-drawer-overlay" onClick={() => setApplyingLead(null)}>
+          <aside
+            className="apply-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="apply-drawer-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
-              <h2>Apply</h2>
+              <h2 id="apply-drawer-title">Apply</h2>
               <button type="button" className="modal-close" onClick={() => setApplyingLead(null)}>
-                Ã—
+                &times;
               </button>
             </div>
             <div className="view-details">
@@ -522,7 +539,7 @@ export default function Leads() {
                 Apply
               </button>
             </div>
-          </div>
+          </aside>
         </div>
       )}
 
