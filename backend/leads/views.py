@@ -2,9 +2,12 @@
 Lead API views — list, create, retrieve, update, delete.
 """
 
+from django.db import connection
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from activity.models import Activity, ActivityType
 
@@ -65,3 +68,26 @@ class LeadDetailView(generics.RetrieveUpdateDestroyAPIView):
             description=f"Deleted lead: {title}",
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class LeadAnalysisView(APIView):
+    def get(self, request, pk):
+        get_object_or_404(Lead, pk=pk)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT score, score_reasoning, tech_stack, proposal_draft
+                FROM public.analyses
+                WHERE lead_id = %s
+                """,
+                [str(pk)],
+            )
+            analysis = cursor.fetchone()
+
+        if analysis is None:
+            return Response({})
+
+        return Response(
+            dict(zip(("score", "score_reasoning", "tech_stack", "proposal_draft"), analysis))
+        )

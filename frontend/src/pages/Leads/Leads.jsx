@@ -5,6 +5,7 @@ import { leadsAPI } from '../../services/api';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
+  { value: 'analyzed', label: 'Analyzed' },
   { value: 'pending', label: 'Pending' },
   { value: 'applied', label: 'Applied' },
   { value: 'rejected', label: 'Rejected' },
@@ -105,10 +106,12 @@ export default function Leads() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('analyzed');
   const [showModal, setShowModal] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
   const [viewingLead, setViewingLead] = useState(null);
+  const [applyingLead, setApplyingLead] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
 
   const loadLeads = useCallback(async () => {
@@ -129,6 +132,28 @@ export default function Leads() {
   useEffect(() => {
     loadLeads();
   }, [loadLeads]);
+
+  useEffect(() => {
+    if (!applyingLead) {
+      setAnalysis(null);
+      return undefined;
+    }
+
+    let active = true;
+    leadsAPI
+      .getAnalysis(applyingLead.id)
+      .then((response) => {
+        if (active) setAnalysis(response.data);
+      })
+      .catch((err) => {
+        console.error('Failed to load lead analysis:', err);
+        if (active) setAnalysis(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [applyingLead]);
 
   const resetForm = () => {
     setFormData({
@@ -275,11 +300,19 @@ export default function Leads() {
                         <button
                           type="button"
                           className="btn btn-sm btn-ghost"
+                          disabled={lead.status !== 'analyzed'}
+                          onClick={() => setApplyingLead(lead)}
+                        >
+                          Apply
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
                           onClick={() => setViewingLead(lead)}
                         >
                           View
                         </button>
-                        <button
+                        {/* <button
                           type="button"
                           className="btn btn-sm btn-ghost"
                           onClick={() => openEditModal(lead)}
@@ -292,7 +325,7 @@ export default function Leads() {
                           onClick={() => handleDelete(lead.id)}
                         >
                           Delete
-                        </button>
+                        </button> */}
                       </div>
                     </td>
                   </tr>
@@ -438,6 +471,57 @@ export default function Leads() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {applyingLead && (
+        <div className="modal-overlay" onClick={() => setApplyingLead(null)}>
+          <div className="modal modal--lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Apply</h2>
+              <button type="button" className="modal-close" onClick={() => setApplyingLead(null)}>
+                Ã—
+              </button>
+            </div>
+            <div className="view-details">
+              <div className="analysis-score" aria-label={`Score: ${analysis?.score ?? 'unavailable'}`}>
+                Score <strong>{analysis?.score ?? '—'}</strong>
+              </div>
+              <div className="detail-row detail-row--block">
+                <span className="detail-label">Description</span>
+                <strong>{applyingLead.title}</strong>
+                {applyingLead.url && (
+                  <a href={applyingLead.url} target="_blank" rel="noopener noreferrer">
+                    {applyingLead.url}
+                  </a>
+                )}
+                <span className="analysis-detail">
+                  <strong>Score Reasoning</strong>
+                  {analysis?.score_reasoning || '—'}
+                </span>
+                <span className="analysis-detail">
+                  <strong>Tech Stack</strong>
+                  {analysis?.tech_stack || '—'}
+                </span>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary">
+                Generate Proposal
+              </button>
+            </div>
+            <div className="view-details">
+              <div className="detail-row detail-row--block">
+                <span className="detail-label">Proposal</span>
+                <span>{analysis?.proposal_draft || 'No proposal draft available.'}</span>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-primary" disabled>
+                Apply
+              </button>
+            </div>
           </div>
         </div>
       )}

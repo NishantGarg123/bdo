@@ -31,6 +31,12 @@ services:
     environment:
       DB_HOST: postgres
       USE_SQLITE: "False"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        sed -i 's/\r$//' /app/entrypoint.sh
+        exec /bin/sh /app/entrypoint.sh
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:

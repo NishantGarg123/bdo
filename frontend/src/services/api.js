@@ -39,6 +39,7 @@ export const leadsAPI = {
   getAll: (params) => api.get('/leads/', { params }),
   create: (data) => api.post('/leads/', data),
   getById: (id) => api.get(`/leads/${id}/`),
+  getAnalysis: (id) => api.get(`/leads/${id}/analysis/`),
   update: (id, data) => api.patch(`/leads/${id}/`, data),
   delete: (id) => api.delete(`/leads/${id}/`),
 };

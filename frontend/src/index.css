@@ -777,6 +777,30 @@ textarea {
   margin-top: 8px;
 }
 
+.analysis-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 1.25rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #1e4f9a;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.analysis-score strong {
+  color: #12366f;
+  font-size: 1rem;
+}
+
+.analysis-detail {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 0.85rem;
+}
+
 .view-details {
   padding: 24px;
 }
