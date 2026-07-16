@@ -528,16 +528,24 @@ export default function Leads() {
                 Score <strong>{analysis?.score ?? '—'}</strong>
               </div>
               <div className="detail-row detail-row--block">
-                <span className="detail-label">Description</span>
+                <span className="detail-label">Job</span>
                 <strong>{applyingLead.title}</strong>
-                {applyingLead.description && (
-                  <p className="job-description">{applyingLead.description}</p>
-                )}
+              </div>
+              <div className="detail-row detail-row--block">
+                <span className="detail-label">Description</span>
+                <p className="job-description">
+                  {applyingLead.description || 'No job description available.'}
+                </p>
                 {applyingLead.url && (
                   <a href={applyingLead.url} target="_blank" rel="noopener noreferrer">
                     {applyingLead.url}
                   </a>
                 )}
+              </div>
+            </div>
+            <div className="view-details">
+              <div className="detail-row detail-row--block">
+                <span className="detail-label">Analysis</span>
                 <span className="analysis-detail">
                   <strong>Score Reasoning</strong>
                   {analysis?.score_reasoning || '—'}
