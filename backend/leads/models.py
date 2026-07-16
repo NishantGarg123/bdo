@@ -1,5 +1,8 @@
 """
-Lead model — core entity for BDO lead management.
+Job model — core entity for BDO lead management.
+
+Previously named Lead, backed by leads_lead table.
+Now backed by the public.jobs table with text primary key.
 
 Future enhancements: assignment, comments, resume uploads, AI recommendations.
 """
@@ -16,8 +19,10 @@ class LeadStatus(models.TextChoices):
     IN_PROGRESS = "in_progress", "In Progress"
 
 
-class Lead(models.Model):
+class Job(models.Model):
+    id = models.CharField(primary_key=True, max_length=255)
     title = models.CharField(max_length=500)
+    description = models.TextField(null=True, blank=True)
     url = models.URLField(max_length=1000, blank=True, default="")
     budget = models.CharField(max_length=100, blank=True, default="")
     budget_min = models.FloatField(null=True, blank=True)
@@ -33,11 +38,15 @@ class Lead(models.Model):
     )
     skip_reason = models.CharField(max_length=500, blank=True, default="")
     total_proposals = models.IntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "jobs"
         ordering = ["-fetched_at"]
 
     def __str__(self):
         return self.title
+
+
+# Backward-compatibility alias so existing imports of `Lead` still work
+# during the transition (e.g. old migrations referencing apps.get_model("leads","Lead")).
+Lead = Job

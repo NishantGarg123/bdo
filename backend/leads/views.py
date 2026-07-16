@@ -1,5 +1,5 @@
 """
-Lead API views — list, create, retrieve, update, delete.
+Job API views — list, create, retrieve, update, delete.
 """
 
 from django.db import connection
@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from activity.models import Activity, ActivityType
 
-from .models import Lead
+from .models import Job
 from .serializers import LeadSerializer
 
 
@@ -19,7 +19,7 @@ class LeadListCreateView(generics.ListCreateAPIView):
     serializer_class = LeadSerializer
 
     def get_queryset(self):
-        queryset = Lead.objects.all()
+        queryset = Job.objects.all()
         search = self.request.query_params.get("search", "").strip()
         status_filter = self.request.query_params.get("status", "").strip()
 
@@ -36,26 +36,26 @@ class LeadListCreateView(generics.ListCreateAPIView):
         return queryset
 
     def perform_create(self, serializer):
-        lead = serializer.save()
+        job = serializer.save()
         Activity.objects.create(
             activity_type=ActivityType.LEAD_CREATED,
             user=self.request.user,
-            lead=lead,
-            description=f"Created lead: {lead.title}",
+            job=job,
+            description=f"Created job: {job.title}",
         )
 
 
 class LeadDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Lead.objects.all()
+    queryset = Job.objects.all()
     serializer_class = LeadSerializer
 
     def perform_update(self, serializer):
-        lead = serializer.save()
+        job = serializer.save()
         Activity.objects.create(
             activity_type=ActivityType.LEAD_UPDATED,
             user=self.request.user,
-            lead=lead,
-            description=f"Updated lead: {lead.title}",
+            job=job,
+            description=f"Updated job: {job.title}",
         )
 
     def destroy(self, request, *args, **kwargs):
@@ -65,21 +65,21 @@ class LeadDetailView(generics.RetrieveUpdateDestroyAPIView):
         Activity.objects.create(
             activity_type=ActivityType.LEAD_UPDATED,
             user=request.user,
-            description=f"Deleted lead: {title}",
+            description=f"Deleted job: {title}",
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class LeadAnalysisView(APIView):
     def get(self, request, pk):
-        get_object_or_404(Lead, pk=pk)
+        get_object_or_404(Job, pk=pk)
 
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT score, score_reasoning, tech_stack, proposal_draft
                 FROM public.analyses
-                WHERE lead_id = %s
+                WHERE job_id = %s
                 """,
                 [str(pk)],
             )

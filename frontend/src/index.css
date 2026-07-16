@@ -750,6 +750,12 @@ textarea {
   border-bottom: 1px solid var(--color-border-light);
 }
 
+.drawer-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .modal-header h2 {
   font-size: 1.1rem;
   font-weight: 600;
@@ -786,6 +792,10 @@ textarea {
   border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   box-shadow: var(--shadow-lg);
   animation: slide-in-from-right 180ms ease-out;
+}
+
+.apply-drawer.expanded {
+  width: min(100%, 92vw);
 }
 
 .apply-drawer .modal-header {

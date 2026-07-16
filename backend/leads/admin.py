@@ -1,10 +1,10 @@
 from django.contrib import admin
 
-from .models import Lead
+from .models import Job
 
 
-@admin.register(Lead)
-class LeadAdmin(admin.ModelAdmin):
+@admin.register(Job)
+class JobAdmin(admin.ModelAdmin):
     list_display = [
         "title",
         "job_type",

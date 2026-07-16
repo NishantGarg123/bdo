@@ -1,25 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: bdo_postgres
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "${DB_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-
   backend:
     build:
       context: ./backend
@@ -29,21 +8,13 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: postgres
       USE_SQLITE: "False"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        sed -i 's/\r$//' /app/entrypoint.sh
-        exec /bin/sh /app/entrypoint.sh
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
-    depends_on:
-      postgres:
-        condition: service_healthy
+
+
 
   frontend:
     build:
@@ -64,5 +35,5 @@ services:
       - backend
 
 volumes:
-  postgres_data:
   frontend_node_modules:
+

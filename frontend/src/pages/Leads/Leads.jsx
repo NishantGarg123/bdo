@@ -15,6 +15,7 @@ const STATUS_OPTIONS = [
 
 const EMPTY_FORM = {
   title: '',
+  description: '',
   url: '',
   budget: '',
   budget_min: '',
@@ -68,6 +69,7 @@ function parseSkillsInput(value) {
 function leadToFormData(lead) {
   return {
     title: lead.title || '',
+    description: lead.description || '',
     url: lead.url || '',
     budget: lead.budget || '',
     budget_min: lead.budget_min ?? '',
@@ -85,6 +87,7 @@ function leadToFormData(lead) {
 function formDataToPayload(formData) {
   const payload = {
     title: formData.title,
+    description: formData.description || null,
     url: formData.url,
     budget: formData.budget,
     skills: parseSkillsInput(formData.skills),
@@ -113,6 +116,7 @@ export default function Leads() {
   const [applyingLead, setApplyingLead] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
 
   const loadLeads = useCallback(async () => {
     setLoading(true);
@@ -368,6 +372,15 @@ export default function Leads() {
                   />
                 </div>
                 <div className="form-group form-group--full">
+                  <label>Description</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Job description..."
+                    rows={4}
+                  />
+                </div>
+                <div className="form-group form-group--full">
                   <label>URL</label>
                   <input
                     type="url"
@@ -489,7 +502,7 @@ export default function Leads() {
       {applyingLead && (
         <div className="apply-drawer-overlay" onClick={() => setApplyingLead(null)}>
           <aside
-            className="apply-drawer"
+            className={`apply-drawer${isDrawerExpanded ? ' expanded' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="apply-drawer-title"
@@ -497,9 +510,18 @@ export default function Leads() {
           >
             <div className="modal-header">
               <h2 id="apply-drawer-title">Apply</h2>
-              <button type="button" className="modal-close" onClick={() => setApplyingLead(null)}>
-                &times;
-              </button>
+              <div className="drawer-header-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsDrawerExpanded((value) => !value)}
+                >
+                  {isDrawerExpanded ? 'Collapse' : 'Expand'}
+                </button>
+                <button type="button" className="modal-close" onClick={() => setApplyingLead(null)}>
+                  ×
+                </button>
+              </div>
             </div>
             <div className="view-details">
               <div className="analysis-score" aria-label={`Score: ${analysis?.score ?? 'unavailable'}`}>
@@ -508,6 +530,9 @@ export default function Leads() {
               <div className="detail-row detail-row--block">
                 <span className="detail-label">Description</span>
                 <strong>{applyingLead.title}</strong>
+                {applyingLead.description && (
+                  <p className="job-description">{applyingLead.description}</p>
+                )}
                 {applyingLead.url && (
                   <a href={applyingLead.url} target="_blank" rel="noopener noreferrer">
                     {applyingLead.url}
@@ -565,6 +590,12 @@ export default function Leads() {
                   )}
                 </span>
               </div>
+              {viewingLead.description && (
+                <div className="detail-row detail-row--block">
+                  <span className="detail-label">Description</span>
+                  <span>{viewingLead.description}</span>
+                </div>
+              )}
               <div className="detail-row">
                 <span className="detail-label">Budget</span>
                 <span>{formatBudget(viewingLead)}</span>
