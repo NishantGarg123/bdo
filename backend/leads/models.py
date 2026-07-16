@@ -1,8 +1,7 @@
 """
 Job model — core entity for BDO lead management.
 
-Previously named Lead, backed by leads_lead table.
-Now backed by the public.jobs table with text primary key.
+Backed by the externally managed public.jobs table with a text primary key.
 
 Future enhancements: assignment, comments, resume uploads, AI recommendations.
 """
@@ -45,8 +44,3 @@ class Job(models.Model):
 
     def __str__(self):
         return self.title
-
-
-# Backward-compatibility alias so existing imports of `Lead` still work
-# during the transition (e.g. old migrations referencing apps.get_model("leads","Lead")).
-Lead = Job
