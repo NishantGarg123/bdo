@@ -35,7 +35,7 @@ else:
     sys.exit(1)
 "
 
-echo "Running migrations (safe to run on existing DB — only applies missing migrations)..."
+echo "Running migrations (safe to run on existing DB only applies missing migrations)..."
 python manage.py migrate --noinput
 
 echo "Initializing application..."
