@@ -810,6 +810,29 @@ textarea {
   margin: 0;
 }
 
+.apply-drawer .proposal-actions {
+  padding: 16px 0 0;
+  flex-wrap: wrap;
+}
+
+.proposal-draft-input {
+  width: 100%;
+  min-height: 12rem;
+  resize: vertical;
+}
+
+.proposal-save-error {
+  flex: 1 1 100%;
+  order: -1;
+  color: var(--color-danger, #f87171);
+  font-size: 0.825rem;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--color-danger, #f87171) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger, #f87171) 30%, transparent);
+  border-radius: 6px;
+  word-break: break-word;
+}
+
 @keyframes slide-in-from-right {
   from {
     transform: translateX(100%);

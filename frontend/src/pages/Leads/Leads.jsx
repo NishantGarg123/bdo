@@ -115,6 +115,10 @@ export default function Leads() {
   const [viewingLead, setViewingLead] = useState(null);
   const [applyingLead, setApplyingLead] = useState(null);
   const [analysis, setAnalysis] = useState(null);
+  const [proposalDraft, setProposalDraft] = useState('');
+  const [isEditingProposal, setIsEditingProposal] = useState(false);
+  const [isSavingProposal, setIsSavingProposal] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
 
@@ -140,6 +144,8 @@ export default function Leads() {
   useEffect(() => {
     if (!applyingLead) {
       setAnalysis(null);
+      setProposalDraft('');
+      setIsEditingProposal(false);
       return undefined;
     }
 
@@ -147,7 +153,11 @@ export default function Leads() {
     leadsAPI
       .getAnalysis(applyingLead.id)
       .then((response) => {
-        if (active) setAnalysis(response.data);
+        if (active) {
+          setAnalysis(response.data);
+          setProposalDraft(response.data.proposal_draft || '');
+          setIsEditingProposal(false);
+        }
       })
       .catch((err) => {
         console.error('Failed to load lead analysis:', err);
@@ -213,6 +223,45 @@ export default function Leads() {
       loadLeads();
     } catch (err) {
       console.error('Failed to delete lead:', err);
+    }
+  };
+
+  const startProposalEdit = () => {
+    setProposalDraft(analysis?.proposal_draft || '');
+    setSaveError('');
+    setIsEditingProposal(true);
+  };
+
+  const cancelProposalEdit = () => {
+    setProposalDraft(analysis?.proposal_draft || '');
+    setSaveError('');
+    setIsEditingProposal(false);
+  };
+
+  const saveProposal = async () => {
+    if (!applyingLead) return;
+
+    setIsSavingProposal(true);
+    setSaveError('');
+    try {
+      const response = await leadsAPI.updateAnalysis(applyingLead.id, {
+        proposal_draft: proposalDraft,
+      });
+      setAnalysis((currentAnalysis) => ({
+        ...currentAnalysis,
+        proposal_draft: response.data.proposal_draft,
+      }));
+      setProposalDraft(response.data.proposal_draft);
+      setIsEditingProposal(false);
+    } catch (err) {
+      console.error('Failed to save proposal draft:', err);
+      const detail =
+        err?.response?.data?.detail ||
+        err?.response?.data?.proposal_draft?.[0] ||
+        'Failed to save proposal. Please try again.';
+      setSaveError(detail);
+    } finally {
+      setIsSavingProposal(false);
     }
   };
 
@@ -556,15 +605,57 @@ export default function Leads() {
                 </span>
               </div>
             </div>
-            <div className="modal-actions">
+            {/* <div className="modal-actions">
               <button type="button" className="btn btn-secondary">
                 Generate Proposal
               </button>
-            </div>
+            </div> */}
             <div className="view-details">
               <div className="detail-row detail-row--block">
                 <span className="detail-label">Proposal</span>
-                <span>{analysis?.proposal_draft || 'No proposal draft available.'}</span>
+                {isEditingProposal ? (
+                  <textarea
+                    className="proposal-draft-input"
+                    value={proposalDraft}
+                    onChange={(e) => setProposalDraft(e.target.value)}
+                    aria-label="Proposal draft"
+                    rows={12}
+                    disabled={isSavingProposal}
+                  />
+                ) : (
+                  <span>{analysis?.proposal_draft || 'No proposal draft available.'}</span>
+                )}
+              </div>
+              <div className="modal-actions proposal-actions">
+                {isEditingProposal ? (
+                  <>
+                    {saveError && (
+                      <span className="proposal-save-error" role="alert">
+                        {saveError}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={cancelProposalEdit}
+                      disabled={isSavingProposal}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={saveProposal}
+                      disabled={isSavingProposal}
+                    >
+                      {isSavingProposal ? 'Saving...' : 'Save'}
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="btn btn-secondary" onClick={startProposalEdit}>
+                    Edit
+                  </button>
+                )}
               </div>
             </div>
             <div className="modal-actions">

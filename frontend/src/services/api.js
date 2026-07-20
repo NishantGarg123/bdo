@@ -10,17 +10,29 @@ const api = axios.create({
   },
 });
 
-let csrfToken = null;
+function getCookieValue(name) {
+  const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+let csrfTokenFetched = false;
 
 export async function fetchCSRFToken() {
-  const response = await api.get('/csrf/');
-  csrfToken = response.data.csrfToken;
-  return csrfToken;
+  // Calls the endpoint decorated with @ensure_csrf_cookie so Django sets
+  // the csrftoken cookie. The actual token value is then read from the
+  // cookie per-request rather than stored in a variable that can go stale.
+  if (!csrfTokenFetched) {
+    await api.get('/csrf/');
+    csrfTokenFetched = true;
+  }
 }
 
 api.interceptors.request.use((config) => {
-  if (csrfToken && ['post', 'put', 'patch', 'delete'].includes(config.method)) {
-    config.headers['X-CSRFToken'] = csrfToken;
+  if (['post', 'put', 'patch', 'delete'].includes(config.method)) {
+    const token = getCookieValue('csrftoken');
+    if (token) {
+      config.headers['X-CSRFToken'] = token;
+    }
   }
   return config;
 });
@@ -40,6 +52,7 @@ export const leadsAPI = {
   create: (data) => api.post('/leads/', data),
   getById: (id) => api.get(`/leads/${id}/`),
   getAnalysis: (id) => api.get(`/leads/${id}/analysis/`),
+  updateAnalysis: (id, data) => api.patch(`/leads/${id}/analysis/`, data),
   update: (id, data) => api.patch(`/leads/${id}/`, data),
   delete: (id) => api.delete(`/leads/${id}/`),
 };

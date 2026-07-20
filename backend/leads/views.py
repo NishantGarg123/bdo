@@ -91,3 +91,33 @@ class LeadAnalysisView(APIView):
         return Response(
             dict(zip(("score", "score_reasoning", "tech_stack", "proposal_draft"), analysis))
         )
+
+    def patch(self, request, pk):
+        get_object_or_404(Job, pk=pk)
+        proposal_draft = request.data.get("proposal_draft")
+
+        if proposal_draft is None or not isinstance(proposal_draft, str):
+            return Response(
+                {"proposal_draft": ["This field is required and must be a string."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE public.analyses
+                SET proposal_draft = %s
+                WHERE job_id = %s
+                RETURNING proposal_draft
+                """,
+                [proposal_draft, str(pk)],
+            )
+            updated_proposal = cursor.fetchone()
+
+        if updated_proposal is None:
+            return Response(
+                {"detail": "No analysis found for this job. Run the AI analysis first."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response({"proposal_draft": updated_proposal[0]})
