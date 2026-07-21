@@ -623,7 +623,7 @@ export default function Leads() {
                     disabled={isSavingProposal}
                   />
                 ) : (
-                  <span>{analysis?.proposal_draft || 'No proposal draft available.'}</span>
+                  <p className="proposal-draft-display">{analysis?.proposal_draft || 'No proposal draft available.'}</p>
                 )}
               </div>
               <div className="modal-actions proposal-actions">

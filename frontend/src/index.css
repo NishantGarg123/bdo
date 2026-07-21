@@ -821,6 +821,12 @@ textarea {
   resize: vertical;
 }
 
+.proposal-draft-display {
+  white-space: pre-wrap;   /* preserves newlines, paragraphs & spacing */
+  word-break: break-word;  /* wraps long URLs/words instead of overflowing */
+  margin: 0;               /* remove default <p> vertical margins */
+}
+
 .proposal-save-error {
   flex: 1 1 100%;
   order: -1;
