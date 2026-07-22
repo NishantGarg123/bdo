@@ -49,11 +49,13 @@ export const dashboardAPI = {
 
 export const leadsAPI = {
   getAll: (params) => api.get('/leads/', { params }),
+  getApplied: (params) => api.get('/leads/applied/', { params }),
   create: (data) => api.post('/leads/', data),
   getById: (id) => api.get(`/leads/${id}/`),
   getAnalysis: (id) => api.get(`/leads/${id}/analysis/`),
   updateAnalysis: (id, data) => api.patch(`/leads/${id}/analysis/`, data),
   update: (id, data) => api.patch(`/leads/${id}/`, data),
+  apply: (id) => api.post(`/leads/${id}/apply/`),
   delete: (id) => api.delete(`/leads/${id}/`),
 };
 

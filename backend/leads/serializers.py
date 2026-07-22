@@ -17,6 +17,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "url",
+            "search_keyword",
             "budget",
             "budget_min",
             "budget_max",

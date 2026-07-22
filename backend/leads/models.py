@@ -11,6 +11,7 @@ from django.utils import timezone
 
 
 class LeadStatus(models.TextChoices):
+    ANALYZED = "analyzed", "Analyzed"
     PENDING = "pending", "Pending"
     APPLIED = "applied", "Applied"
     REJECTED = "rejected", "Rejected"
@@ -23,6 +24,7 @@ class Job(models.Model):
     title = models.CharField(max_length=500)
     description = models.TextField(null=True, blank=True)
     url = models.URLField(max_length=1000, blank=True, default="")
+    search_keyword = models.TextField(null=True, blank=True)
     budget = models.CharField(max_length=100, blank=True, default="")
     budget_min = models.FloatField(null=True, blank=True)
     budget_max = models.FloatField(null=True, blank=True)

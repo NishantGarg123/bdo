@@ -19,6 +19,16 @@ export default function App() {
             <Route element={<MainLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/leads" element={<Leads />} />
+              <Route
+                path="/applied-leads"
+                element={
+                  <Leads
+                    fixedStatus="applied"
+                    pageTitle="Applied Leads"
+                    pageDescription="View your applied business development leads"
+                  />
+                }
+              />
               <Route path="/activity" element={<Activity />} />
               <Route path="/integrations" element={<Integrations />} />
             </Route>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SkillChips from '../../components/SkillChips';
 import StatusBadge from '../../components/StatusBadge';
 import { leadsAPI } from '../../services/api';
@@ -13,10 +13,20 @@ const STATUS_OPTIONS = [
   { value: 'in_progress', label: 'In Progress' },
 ];
 
+const TIME_FILTER_OPTIONS = [
+  { value: '24h', label: 'Last 24 Hours' },
+  { value: '3d', label: 'Last 3 Days' },
+  { value: '7d', label: 'Last 7 Days' },
+  { value: '14d', label: 'Last 14 Days' },
+  { value: '30d', label: 'Last 30 Days' },
+  { value: 'all', label: 'All Time' },
+];
+
 const EMPTY_FORM = {
   title: '',
   description: '',
   url: '',
+  search_keyword: '',
   budget: '',
   budget_min: '',
   budget_max: '',
@@ -71,6 +81,7 @@ function leadToFormData(lead) {
     title: lead.title || '',
     description: lead.description || '',
     url: lead.url || '',
+    search_keyword: lead.search_keyword || '',
     budget: lead.budget || '',
     budget_min: lead.budget_min ?? '',
     budget_max: lead.budget_max ?? '',
@@ -89,6 +100,7 @@ function formDataToPayload(formData) {
     title: formData.title,
     description: formData.description || null,
     url: formData.url,
+    search_keyword: formData.search_keyword || null,
     budget: formData.budget,
     skills: parseSkillsInput(formData.skills),
     job_type: formData.job_type,
@@ -105,11 +117,23 @@ function formDataToPayload(formData) {
   return payload;
 }
 
-export default function Leads() {
+export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescription = 'Manage and track your business development leads' }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('analyzed');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('analyzed');
+  const [selectedTimeFilter, setSelectedTimeFilter] = useState('24h');
+  // A fixed-status route must not inherit filters from another route that
+  // reuses this component (for example, Leads -> Applied Leads).
+  const statusFilter = fixedStatus || selectedStatusFilter;
+  const timeFilter = fixedStatus ? 'all' : selectedTimeFilter;
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [statusCounts, setStatusCounts] = useState({});
+  const [applyingIds, setApplyingIds] = useState(new Set());
+  const [statusMessage, setStatusMessage] = useState('');
+  const [statusError, setStatusError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
   const [viewingLead, setViewingLead] = useState(null);
@@ -122,24 +146,71 @@ export default function Leads() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
 
-  const loadLeads = useCallback(async () => {
+  // Keep latest filter values in refs so the fetch effect never has stale closures.
+  const filtersRef = useRef({ search, statusFilter, timeFilter, page });
+  useEffect(() => {
+    filtersRef.current = { search, statusFilter, timeFilter, page };
+  });
+
+  // Stable fetch function — always reads current values from the ref.
+  const fetchLeads = useRef(null);
+  // A slow response for an old filter must never replace the most recent list.
+  const latestRequestId = useRef(0);
+  fetchLeads.current = async (targetPage) => {
+    const { search: s, statusFilter: sf, timeFilter: tf } = filtersRef.current;
+    const pg = targetPage ?? filtersRef.current.page;
+    const requestId = latestRequestId.current + 1;
+    latestRequestId.current = requestId;
     setLoading(true);
     try {
-      const params = {};
-      if (search) params.search = search;
-      if (statusFilter) params.status = statusFilter;
-      const response = await leadsAPI.getAll(params);
-      setLeads(response.data);
+      const params = { page: pg, time_filter: tf };
+      if (s) params.search = s;
+      if (sf) params.status = sf;
+      const response = fixedStatus === 'applied'
+        ? await leadsAPI.getApplied(params)
+        : await leadsAPI.getAll(params);
+      const data = response.data;
+      // Filter changes may issue another request before this one returns.
+      if (requestId !== latestRequestId.current) return;
+      if (Array.isArray(data)) {
+        setLeads(data);
+        setTotalCount(data.length);
+        setTotalPages(1);
+        setStatusCounts({});
+      } else {
+        setLeads(data.results || []);
+        setTotalCount(data.total ?? 0);
+        setTotalPages(data.total_pages ?? 1);
+        setStatusCounts(data.status_counts ?? {});
+      }
     } catch (err) {
-      console.error('Failed to load leads:', err);
+      if (requestId === latestRequestId.current) {
+        console.error('Failed to load leads:', err);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestId.current) setLoading(false);
     }
-  }, [search, statusFilter]);
+  };
 
+  // Convenience wrapper so call-sites don't reference the ref directly.
+  const loadLeads = (targetPage) => fetchLeads.current(targetPage);
+
+  // Tracks the last-fetched page so the page-change effect can skip no-op transitions.
+  const prevPage = useRef(page);
+
+  // Re-fetch (resetting to page 1) whenever any filter changes.
   useEffect(() => {
-    loadLeads();
-  }, [loadLeads]);
+    setPage(1);
+    prevPage.current = 1; // keep prevPage in sync so the page effect doesn't double-fetch
+    fetchLeads.current(1);
+  }, [search, statusFilter, timeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch when the user explicitly changes page (pagination buttons).
+  useEffect(() => {
+    if (prevPage.current === page) return; // skip on initial mount / filter resets
+    prevPage.current = page;
+    fetchLeads.current(page);
+  }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!applyingLead) {
@@ -210,7 +281,7 @@ export default function Leads() {
       }
       setShowModal(false);
       resetForm();
-      loadLeads();
+      loadLeads(page);
     } catch (err) {
       console.error('Failed to save lead:', err);
     }
@@ -220,9 +291,41 @@ export default function Leads() {
     if (!window.confirm('Are you sure you want to delete this lead?')) return;
     try {
       await leadsAPI.delete(id);
-      loadLeads();
+      loadLeads(page);
     } catch (err) {
       console.error('Failed to delete lead:', err);
+    }
+  };
+
+  /** Mark a lead as Applied via the quick-apply (✓) button */
+  const handleQuickApply = async (lead) => {
+    if (applyingIds.has(lead.id)) return;
+    setStatusMessage('');
+    setStatusError('');
+    setApplyingIds((prev) => new Set(prev).add(lead.id));
+    try {
+      const response = await leadsAPI.apply(lead.id);
+      const appliedLead = response.data;
+      // Keep any open detail/apply panels synchronized before the list refreshes.
+      setViewingLead((current) => (current?.id === lead.id ? appliedLead : current));
+      setApplyingLead((current) => (current?.id === lead.id ? appliedLead : current));
+      // Full reload: correctly removes the row from filtered views,
+      // updates the list, and refreshes all status counts in one go.
+      await fetchLeads.current(1);
+      setPage(1);
+      setStatusMessage(`Marked “${appliedLead.title}” as Applied.`);
+    } catch (err) {
+      console.error('Failed to apply lead:', err);
+      setStatusError(
+        err?.response?.data?.detail ||
+          'Could not update this job. Please try again.'
+      );
+    } finally {
+      setApplyingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(lead.id);
+        return next;
+      });
     }
   };
 
@@ -265,12 +368,28 @@ export default function Leads() {
     }
   };
 
+  /** Build label for status filter options, appending counts when available */
+  const statusLabel = (opt) => {
+    if (!opt.value) {
+      // "All Statuses" — sum all counts
+      const total = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+      return Object.keys(statusCounts).length > 0
+        ? `All Statuses (${total})`
+        : opt.label;
+    }
+    const count = statusCounts[opt.value];
+    return count !== undefined ? `${opt.label} (${count})` : opt.label;
+  };
+
+  const canGoPrev = page > 1;
+  const canGoNext = page < totalPages;
+
   return (
     <div className="page leads-page">
       <div className="page-header page-header--row">
         <div>
-          <h1>Leads</h1>
-          <p>Manage and track your business development leads</p>
+          <h1>{pageTitle}</h1>
+          <p>{pageDescription}</p>
         </div>
         <button type="button" className="btn btn-primary" onClick={openAddModal}>
           + Add Lead
@@ -287,19 +406,52 @@ export default function Leads() {
           />
         </div>
         <div className="filters-placeholder">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="filter-select"
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          {!fixedStatus && (
+            <>
+              {/* Status filter with counts */}
+              <select
+                value={statusFilter}
+                onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                className="filter-select"
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {statusLabel(opt)}
+                  </option>
+                ))}
+              </select>
+
+              {/* Time filter */}
+              <select
+                value={timeFilter}
+                onChange={(e) => setSelectedTimeFilter(e.target.value)}
+                className="filter-select"
+                aria-label="Time range filter"
+              >
+                {TIME_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Summary row */}
+      <div className="leads-summary">
+        <span className="leads-summary__count">
+          {loading ? 'Loading…' : `${totalCount} job${totalCount !== 1 ? 's' : ''} found`}
+        </span>
+        {!loading && totalPages > 1 && (
+          <span className="leads-summary__page">
+            Page {page} of {totalPages}
+          </span>
+        )}
+      </div>
+      {statusMessage && <div className="alert alert-success" role="status">{statusMessage}</div>}
+      {statusError && <div className="alert alert-error" role="alert">{statusError}</div>}
 
       <div className="table-card">
         {loading ? (
@@ -318,6 +470,7 @@ export default function Leads() {
                 <tr>
                   <th>Title</th>
                   <th>URL</th>
+                  <th>Search Keyword</th>
                   <th>Budget</th>
                   <th>Skills</th>
                   <th>Job Type</th>
@@ -347,6 +500,7 @@ export default function Leads() {
                         '—'
                       )}
                     </td>
+                    <td>{lead.search_keyword || 'NA'}</td>
                     <td>{formatBudget(lead)}</td>
                     <td className="cell-skills">
                       <SkillChips skills={lead.skills} />
@@ -376,6 +530,17 @@ export default function Leads() {
                         >
                           View
                         </button>
+                        {/* Quick-apply (✓) button */}
+                        <button
+                          type="button"
+                          className={`btn btn-sm btn-apply-check${lead.status === 'applied' ? ' btn-apply-check--done' : ''}`}
+                          title={lead.status === 'applied' ? 'Already applied' : 'Mark as Applied'}
+                          disabled={lead.status === 'applied' || applyingIds.has(lead.id)}
+                          onClick={() => handleQuickApply(lead)}
+                          aria-label="Mark as Applied"
+                        >
+                          {applyingIds.has(lead.id) ? '…' : '✓'}
+                        </button>
                         {/* <button
                           type="button"
                           className="btn btn-sm btn-ghost"
@@ -399,6 +564,31 @@ export default function Leads() {
           </div>
         )}
       </div>
+
+      {/* Pagination controls */}
+      {!loading && totalPages > 1 && (
+        <div className="pagination">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={!canGoPrev}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            ← Previous
+          </button>
+          <span className="pagination__info">
+            Page {page} of {totalPages} &nbsp;·&nbsp; {totalCount} total
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={!canGoNext}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -436,6 +626,14 @@ export default function Leads() {
                     value={formData.url}
                     onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                     placeholder="https://"
+                  />
+                </div>
+                <div className="form-group form-group--full">
+                  <label>Search Keyword</label>
+                  <input
+                    type="text"
+                    value={formData.search_keyword}
+                    onChange={(e) => setFormData({ ...formData, search_keyword: e.target.value })}
                   />
                 </div>
                 <div className="form-group">
