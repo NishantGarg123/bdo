@@ -145,6 +145,10 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
   const [saveError, setSaveError] = useState('');
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
+  const [rejectingLead, setRejectingLead] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
+  const [viewingRejectionReason, setViewingRejectionReason] = useState(null); // { title, reason }
 
   // Keep latest filter values in refs so the fetch effect never has stale closures.
   const filtersRef = useRef({ search, statusFilter, timeFilter, page });
@@ -168,7 +172,9 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
       if (sf) params.status = sf;
       const response = fixedStatus === 'applied'
         ? await leadsAPI.getApplied(params)
-        : await leadsAPI.getAll(params);
+        : fixedStatus === 'rejected'
+          ? await leadsAPI.getRejected({ search: s })
+          : await leadsAPI.getAll(params);
       const data = response.data;
       // Filter changes may issue another request before this one returns.
       if (requestId !== latestRequestId.current) return;
@@ -318,7 +324,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
       console.error('Failed to apply lead:', err);
       setStatusError(
         err?.response?.data?.detail ||
-          'Could not update this job. Please try again.'
+        'Could not update this job. Please try again.'
       );
     } finally {
       setApplyingIds((prev) => {
@@ -326,6 +332,22 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
         next.delete(lead.id);
         return next;
       });
+    }
+  };
+
+  /** Mark a lead as Rejected with a reason */
+  const handleReject = async () => {
+    if (!rejectingLead || !rejectionReason.trim()) return;
+    setIsSubmittingRejection(true);
+    try {
+      await leadsAPI.reject(rejectingLead.id, rejectionReason.trim());
+      setRejectingLead(null);
+      setRejectionReason('');
+      loadLeads(page);
+    } catch (err) {
+      console.error('Failed to save rejection:', err);
+    } finally {
+      setIsSubmittingRejection(false);
     }
   };
 
@@ -468,23 +490,53 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
             <table className="data-table data-table--wide">
               <thead>
                 <tr>
+                  {fixedStatus !== 'applied' && fixedStatus !== 'rejected' && <th>Actions</th>}
                   <th>Title</th>
                   <th>URL</th>
                   <th>Search Keyword</th>
                   <th>Budget</th>
-                  <th>Skills</th>
                   <th>Job Type</th>
                   <th>Posted At</th>
                   <th>Fetched At</th>
                   <th>Status</th>
-                  <th>Skip Reason</th>
+                  {!fixedStatus && statusFilter === 'skipped' && <th>Skip Reason</th>}
                   <th>Proposals</th>
-                  <th>Actions</th>
+                  {fixedStatus === 'rejected' && <th>Reason</th>}
+                  <th>Apply</th>
+                  <th>View</th>
                 </tr>
               </thead>
               <tbody>
                 {leads.map((lead) => (
                   <tr key={lead.id}>
+                    {fixedStatus !== 'applied' && fixedStatus !== 'rejected' && (
+                      <td>
+                        <div className="action-buttons">
+                          {/* Quick-apply (✓) button */}
+                          <button
+                            type="button"
+                            className={`btn btn-sm btn-apply-check${lead.status === 'applied' ? ' btn-apply-check--done' : ''}`}
+                            title={lead.status === 'applied' ? 'Already applied' : 'Mark as Applied'}
+                            disabled={lead.status === 'applied' || applyingIds.has(lead.id)}
+                            onClick={() => handleQuickApply(lead)}
+                            aria-label="Mark as Applied"
+                          >
+                            {applyingIds.has(lead.id) ? '…' : '✓'}
+                          </button>
+                          {/* Mark as Rejected (×) button */}
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-reject-check"
+                            title="Mark as Rejected"
+                            onClick={() => { setRejectingLead(lead); setRejectionReason(''); }}
+                            aria-label="Mark as Rejected"
+                            disabled={isSubmittingRejection && rejectingLead?.id === lead.id}
+                          >
+                            {isSubmittingRejection && rejectingLead?.id === lead.id ? '…' : '×'}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                     <td className="cell-bold cell-title">{lead.title}</td>
                     <td>
                       {lead.url ? (
@@ -502,60 +554,45 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                     </td>
                     <td>{lead.search_keyword || 'NA'}</td>
                     <td>{formatBudget(lead)}</td>
-                    <td className="cell-skills">
-                      <SkillChips skills={lead.skills} />
-                    </td>
                     <td>{lead.job_type || '—'}</td>
                     <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
                     <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
                     <td>
                       <StatusBadge status={lead.status} label={lead.status_display} />
                     </td>
-                    <td className="cell-muted">{lead.skip_reason || '—'}</td>
+                    {!fixedStatus && statusFilter === 'skipped' && (
+                      <td className="cell-muted">{lead.skip_reason || '—'}</td>
+                    )}
                     <td>{lead.total_proposals ?? 0}</td>
+                    {fixedStatus === 'rejected' && (
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => setViewingRejectionReason({ title: lead.title, reason: lead.rejection_reason || 'No reason recorded.' })}
+                        >
+                          Reason
+                        </button>
+                      </td>
+                    )}
                     <td>
-                      <div className="action-buttons">
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-ghost"
-                          disabled={lead.status !== 'analyzed'}
-                          onClick={() => setApplyingLead(lead)}
-                        >
-                          Apply
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-ghost"
-                          onClick={() => setViewingLead(lead)}
-                        >
-                          View
-                        </button>
-                        {/* Quick-apply (✓) button */}
-                        <button
-                          type="button"
-                          className={`btn btn-sm btn-apply-check${lead.status === 'applied' ? ' btn-apply-check--done' : ''}`}
-                          title={lead.status === 'applied' ? 'Already applied' : 'Mark as Applied'}
-                          disabled={lead.status === 'applied' || applyingIds.has(lead.id)}
-                          onClick={() => handleQuickApply(lead)}
-                          aria-label="Mark as Applied"
-                        >
-                          {applyingIds.has(lead.id) ? '…' : '✓'}
-                        </button>
-                        {/* <button
-                          type="button"
-                          className="btn btn-sm btn-ghost"
-                          onClick={() => openEditModal(lead)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-danger-ghost"
-                          onClick={() => handleDelete(lead.id)}
-                        >
-                          Delete
-                        </button> */}
-                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        disabled={lead.status !== 'analyzed'}
+                        onClick={() => setApplyingLead(lead)}
+                      >
+                        Apply
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => setViewingLead(lead)}
+                      >
+                        View
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -587,6 +624,30 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
           >
             Next →
           </button>
+        </div>
+      )}
+      {/* Rejection reason popup (Rejected Leads page) */}
+      {viewingRejectionReason && (
+        <div className="modal-overlay" onClick={() => setViewingRejectionReason(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Rejection Reason</h2>
+              <button type="button" className="modal-close" onClick={() => setViewingRejectionReason(null)}>
+                ×
+              </button>
+            </div>
+            <div className="modal-form">
+              <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>{viewingRejectionReason.title}</p>
+              <p style={{ color: 'var(--color-text-muted, #666)', whiteSpace: 'pre-wrap' }}>
+                {viewingRejectionReason.reason}
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setViewingRejectionReason(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -742,6 +803,55 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Rejection reason modal */}
+      {rejectingLead && (
+        <div className="modal-overlay" onClick={() => setRejectingLead(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Mark as Rejected</h2>
+              <button type="button" className="modal-close" onClick={() => setRejectingLead(null)}>
+                ×
+              </button>
+            </div>
+            <div className="modal-form">
+              <p style={{ marginBottom: '0.75rem', color: 'var(--text-secondary, #666)' }}>
+                Enter a reason for rejecting <strong>{rejectingLead.title}</strong>.
+              </p>
+              <div className="form-group form-group--full">
+                <label htmlFor="rejection-reason-input">Rejection Reason *</label>
+                <textarea
+                  id="rejection-reason-input"
+                  rows={4}
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="e.g. Budget too low, skills mismatch…"
+                  disabled={isSubmittingRejection}
+                  autoFocus
+                />
+              </div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setRejectingLead(null)}
+                  disabled={isSubmittingRejection}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleReject}
+                  disabled={!rejectionReason.trim() || isSubmittingRejection}
+                >
+                  {isSubmittingRejection ? 'Saving…' : 'Confirm Rejection'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -50,12 +50,14 @@ export const dashboardAPI = {
 export const leadsAPI = {
   getAll: (params) => api.get('/leads/', { params }),
   getApplied: (params) => api.get('/leads/applied/', { params }),
+  getRejected: (params) => api.get('/leads/rejected/', { params }),
   create: (data) => api.post('/leads/', data),
   getById: (id) => api.get(`/leads/${id}/`),
   getAnalysis: (id) => api.get(`/leads/${id}/analysis/`),
   updateAnalysis: (id, data) => api.patch(`/leads/${id}/analysis/`, data),
   update: (id, data) => api.patch(`/leads/${id}/`, data),
   apply: (id) => api.post(`/leads/${id}/apply/`),
+  reject: (id, rejection_reason) => api.post(`/leads/${id}/reject/`, { rejection_reason }),
   delete: (id) => api.delete(`/leads/${id}/`),
 };
 

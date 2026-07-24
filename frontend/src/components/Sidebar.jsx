@@ -4,6 +4,7 @@ const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: '◫' },
   { path: '/leads', label: 'Leads', icon: '◎' },
   { path: '/applied-leads', label: 'Applied Leads', icon: '✓' },
+  { path: '/rejected-leads', label: 'Rejected Leads', icon: '✕' },
   { path: '/activity', label: 'Activity', icon: '◷' },
   { path: '/integrations', label: 'Integrations', icon: '⬡' },
 ];

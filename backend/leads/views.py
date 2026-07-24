@@ -17,6 +17,35 @@ from activity.models import Activity, ActivityType
 from .models import Job, LeadStatus
 from .serializers import LeadSerializer
 
+
+def _ensure_rejected_leads_table():
+    """Create the rejected_leads table (and any missing columns) if needed.
+
+    Runs in autocommit mode so DDL commits immediately, independent of the
+    outer request transaction.
+    """
+    with connection.cursor() as cursor:
+        old_autocommit = connection.autocommit
+        connection.set_autocommit(True)
+        try:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS rejected_leads (
+                    id TEXT PRIMARY KEY,
+                    rejection_reason TEXT NOT NULL
+                )
+                """
+            )
+            # Add the title column if it was not present in an earlier version.
+            cursor.execute(
+                """
+                ALTER TABLE rejected_leads
+                ADD COLUMN IF NOT EXISTS title TEXT
+                """
+            )
+        finally:
+            connection.set_autocommit(old_autocommit)
+
 PAGE_SIZE = 50
 
 TIME_FILTERS = {
@@ -122,6 +151,53 @@ class AppliedLeadListView(LeadListCreateView):
         )
 
 
+class RejectedLeadListView(APIView):
+    """List rejected jobs joined with their rejection reason from rejected_leads."""
+
+    def get(self, request):
+        search = request.query_params.get("search", "").strip()
+
+        # Ensure the table exists before querying it.
+        _ensure_rejected_leads_table()
+
+        with connection.cursor() as cursor:
+            if search:
+                cursor.execute(
+                    """
+                    SELECT j.id, j.title, j.url, j.search_keyword,
+                           j.budget, j.budget_min, j.budget_max,
+                           j.job_type, j.posted_at, j.fetched_at,
+                           j.status, j.skip_reason, j.total_proposals,
+                           rl.rejection_reason
+                    FROM jobs j
+                    LEFT JOIN rejected_leads rl ON rl.id = j.id::text
+                    WHERE j.status = 'rejected'
+                      AND (j.title ILIKE %s OR j.job_type ILIKE %s OR j.budget ILIKE %s)
+                    ORDER BY j.fetched_at DESC
+                    """,
+                    [f"%{search}%", f"%{search}%", f"%{search}%"],
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT j.id, j.title, j.url, j.search_keyword,
+                           j.budget, j.budget_min, j.budget_max,
+                           j.job_type, j.posted_at, j.fetched_at,
+                           j.status, j.skip_reason, j.total_proposals,
+                           rl.rejection_reason
+                    FROM jobs j
+                    LEFT JOIN rejected_leads rl ON rl.id = j.id::text
+                    WHERE j.status = 'rejected'
+                    ORDER BY j.fetched_at DESC
+                    """
+                )
+            columns = [col[0] for col in cursor.description]
+            rows = cursor.fetchall()
+
+        results = [dict(zip(columns, row)) for row in rows]
+        return Response(results)
+
+
 class LeadDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Job.objects.all()
     serializer_class = LeadSerializer
@@ -164,6 +240,45 @@ class LeadApplyView(APIView):
             )
         serializer = LeadSerializer(job)
         return Response(serializer.data)
+
+
+
+class LeadRejectView(APIView):
+    """Mark a lead as Rejected and record the reason in rejected_leads."""
+
+    def post(self, request, pk):
+        job = get_object_or_404(Job, pk=pk)
+        rejection_reason = request.data.get("rejection_reason", "").strip()
+        if not rejection_reason:
+            return Response(
+                {"detail": "rejection_reason is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Ensure the table (and title column) exist before we open the
+        # main transaction — DDL runs in autocommit so it commits instantly.
+        _ensure_rejected_leads_table()
+
+        with transaction.atomic():
+            # 1. Update the job status to 'rejected'.
+            job_locked = Job.objects.select_for_update().get(pk=pk)
+            job_locked.status = LeadStatus.REJECTED
+            job_locked.save(update_fields=["status"])
+
+            # 2. Upsert into rejected_leads with title.
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO rejected_leads (id, title, rejection_reason)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE
+                        SET title = EXCLUDED.title,
+                            rejection_reason = EXCLUDED.rejection_reason
+                    """,
+                    [str(pk), job_locked.title, rejection_reason],
+                )
+
+        return Response({"id": str(pk), "title": job_locked.title, "rejection_reason": rejection_reason})
 
 
 class LeadAnalysisView(APIView):

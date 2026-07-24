@@ -29,6 +29,16 @@ export default function App() {
                   />
                 }
               />
+              <Route
+                path="/rejected-leads"
+                element={
+                  <Leads
+                    fixedStatus="rejected"
+                    pageTitle="Rejected Leads"
+                    pageDescription="View your rejected business development leads"
+                  />
+                }
+              />
               <Route path="/activity" element={<Activity />} />
               <Route path="/integrations" element={<Integrations />} />
             </Route>
