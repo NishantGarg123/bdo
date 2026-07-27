@@ -1,3 +1,5 @@
+<img width="1918" height="820" alt="upwork_flow" src="https://github.com/user-attachments/assets/6f92040d-6fe9-4fc9-9477-b6b635e147d7" />
+
 # BDO Lead Management
 
 A full-stack web application for Business Development Officers (BDOs) to manage leads, track activities, and integrate external services.
