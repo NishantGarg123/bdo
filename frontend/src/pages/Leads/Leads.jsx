@@ -150,6 +150,10 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
   const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
   const [viewingRejectionReason, setViewingRejectionReason] = useState(null); // { title, reason }
 
+  // Row selection & bulk refresh
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Keep latest filter values in refs so the fetch effect never has stale closures.
   const filtersRef = useRef({ search, statusFilter, timeFilter, page });
   useEffect(() => {
@@ -208,6 +212,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
   useEffect(() => {
     setPage(1);
     prevPage.current = 1; // keep prevPage in sync so the page effect doesn't double-fetch
+    setSelectedIds(new Set()); // clear selection on filter change
     fetchLeads.current(1);
   }, [search, statusFilter, timeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -215,6 +220,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
   useEffect(() => {
     if (prevPage.current === page) return; // skip on initial mount / filter resets
     prevPage.current = page;
+    setSelectedIds(new Set()); // clear selection on page change
     fetchLeads.current(page);
   }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -403,6 +409,56 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
     return count !== undefined ? `${opt.label} (${count})` : opt.label;
   };
 
+  // ── Row selection helpers ──────────────────────────────────────────────────
+  const allPageIds = leads.map((l) => l.id);
+  const allSelected = allPageIds.length > 0 && allPageIds.every((id) => selectedIds.has(id));
+  const someSelected = allPageIds.some((id) => selectedIds.has(id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allPageIds));
+    }
+  };
+
+  const toggleSelectRow = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /** Refresh selected jobs — updates proposal, interviewing, invite_sent, hired */
+  const handleRefresh = async () => {
+    if (selectedIds.size === 0 || isRefreshing) return;
+    setIsRefreshing(true);
+    setStatusMessage('');
+    setStatusError('');
+    try {
+      const response = await leadsAPI.bulkRefresh([...selectedIds]);
+      const refreshed = response.data; // array of updated lead objects
+      const refreshedMap = Object.fromEntries(refreshed.map((l) => [l.id, l]));
+      setLeads((prev) =>
+        prev.map((lead) =>
+          refreshedMap[lead.id]
+            ? { ...lead, ...refreshedMap[lead.id] }
+            : lead
+        )
+      );
+      setStatusMessage(`Refreshed ${refreshed.length} job${refreshed.length !== 1 ? 's' : ''}.`);
+    } catch (err) {
+      console.error('Bulk refresh failed:', err);
+      setStatusError(
+        err?.response?.data?.detail || 'Refresh failed. Please try again.'
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const canGoPrev = page > 1;
   const canGoNext = page < totalPages;
 
@@ -475,6 +531,28 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
       {statusMessage && <div className="alert alert-success" role="status">{statusMessage}</div>}
       {statusError && <div className="alert alert-error" role="alert">{statusError}</div>}
 
+      {/* Refresh toolbar — shown above the table */}
+      <div className="refresh-toolbar">
+        <button
+          type="button"
+          className="btn btn-secondary btn-refresh"
+          disabled={selectedIds.size === 0 || isRefreshing}
+          onClick={handleRefresh}
+          title={selectedIds.size === 0 ? 'Select rows to refresh' : `Refresh ${selectedIds.size} selected job${selectedIds.size !== 1 ? 's' : ''}`}
+        >
+          {isRefreshing ? (
+            <><span className="btn-refresh-spinner" aria-hidden="true" />Refreshing…</>
+          ) : (
+            <>
+              <span aria-hidden="true">↻</span>
+              {selectedIds.size > 0
+                ? `Refresh (${selectedIds.size})`
+                : 'Refresh'}
+            </>
+          )}
+        </button>
+      </div>
+
       <div className="table-card">
         {loading ? (
           <div className="page-loading">Loading leads...</div>
@@ -490,6 +568,17 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
             <table className="data-table data-table--wide">
               <thead>
                 <tr>
+                  {/* Checkbox — Select All */}
+                  <th className="col-checkbox">
+                    <input
+                      type="checkbox"
+                      className="row-checkbox"
+                      checked={allSelected}
+                      ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                      onChange={toggleSelectAll}
+                      aria-label="Select all rows on this page"
+                    />
+                  </th>
                   {fixedStatus !== 'applied' && fixedStatus !== 'rejected' && <th>Actions</th>}
                   <th>Title</th>
                   <th>URL</th>
@@ -501,6 +590,9 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                   <th>Status</th>
                   {!fixedStatus && statusFilter === 'skipped' && <th>Skip Reason</th>}
                   <th>Proposals</th>
+                  <th>Interviewing</th>
+                  <th>Invite Sent</th>
+                  <th>Hired</th>
                   {fixedStatus === 'rejected' && <th>Reason</th>}
                   <th>Apply</th>
                   <th>View</th>
@@ -508,7 +600,20 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
               </thead>
               <tbody>
                 {leads.map((lead) => (
-                  <tr key={lead.id}>
+                  <tr
+                    key={lead.id}
+                    className={selectedIds.has(lead.id) ? 'row-selected' : ''}
+                  >
+                    {/* Per-row checkbox */}
+                    <td className="col-checkbox">
+                      <input
+                        type="checkbox"
+                        className="row-checkbox"
+                        checked={selectedIds.has(lead.id)}
+                        onChange={() => toggleSelectRow(lead.id)}
+                        aria-label={`Select row for ${lead.title}`}
+                      />
+                    </td>
                     {fixedStatus !== 'applied' && fixedStatus !== 'rejected' && (
                       <td>
                         <div className="action-buttons">
@@ -564,6 +669,22 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                       <td className="cell-muted">{lead.skip_reason || '—'}</td>
                     )}
                     <td>{lead.total_proposals ?? 0}</td>
+                    {/* New tracking columns */}
+                    <td className="cell-tracking">
+                      {lead.interviewing
+                        ? <span className="tracking-badge tracking-badge--yes">Yes</span>
+                        : <span className="tracking-badge tracking-badge--no">No</span>}
+                    </td>
+                    <td className="cell-tracking">
+                      {lead.invite_sent
+                        ? <span className="tracking-badge tracking-badge--yes">Yes</span>
+                        : <span className="tracking-badge tracking-badge--no">No</span>}
+                    </td>
+                    <td className="cell-tracking">
+                      {lead.hired
+                        ? <span className="tracking-badge tracking-badge--yes">Yes</span>
+                        : <span className="tracking-badge tracking-badge--no">No</span>}
+                    </td>
                     {fixedStatus === 'rejected' && (
                       <td>
                         <button

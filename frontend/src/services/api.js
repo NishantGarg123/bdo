@@ -59,6 +59,7 @@ export const leadsAPI = {
   apply: (id) => api.post(`/leads/${id}/apply/`),
   reject: (id, rejection_reason) => api.post(`/leads/${id}/reject/`, { rejection_reason }),
   delete: (id) => api.delete(`/leads/${id}/`),
+  bulkRefresh: (ids) => api.post('/leads/bulk-refresh/', { ids }),
 };
 
 export const activityAPI = {

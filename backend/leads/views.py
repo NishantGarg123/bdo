@@ -332,3 +332,98 @@ class LeadAnalysisView(APIView):
             )
 
         return Response({"proposal_draft": updated_proposal[0]})
+
+
+def _ensure_analyses_tracking_columns():
+    """Ensure interviewing, invite_sent, and hired columns exist on public.analyses.
+
+    Runs in autocommit mode so DDL commits immediately.
+    """
+    with connection.cursor() as cursor:
+        old_autocommit = connection.autocommit
+        connection.set_autocommit(True)
+        try:
+            for col, col_type in [
+                ("interviewing", "BOOLEAN DEFAULT FALSE"),
+                ("invite_sent", "BOOLEAN DEFAULT FALSE"),
+                ("hired", "BOOLEAN DEFAULT FALSE"),
+                ("proposal_draft", "TEXT"),
+            ]:
+                try:
+                    cursor.execute(
+                        f"ALTER TABLE public.analyses ADD COLUMN IF NOT EXISTS {col} {col_type}"
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        finally:
+            connection.set_autocommit(old_autocommit)
+
+
+class LeadBulkRefreshView(APIView):
+    """Refresh proposal, interviewing, invite_sent, and hired for selected jobs.
+
+    POST body: { "ids": ["job-id-1", "job-id-2", ...] }
+
+    Returns:
+        A list of job objects with refreshed fields included.
+    """
+
+    def post(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"detail": "ids must be a non-empty list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Cap to a sane maximum to avoid accidental full-table scans.
+        ids = [str(i) for i in ids[:500]]
+
+        # Ensure the tracking columns exist before querying.
+        _ensure_analyses_tracking_columns()
+
+        # Fetch fresh analysis data for each requested job.
+        with connection.cursor() as cursor:
+            placeholders = ",".join(["%s"] * len(ids))
+            cursor.execute(
+                f"""
+                SELECT job_id,
+                       COALESCE(proposal_draft, '') AS proposal_draft,
+                       COALESCE(interviewing,  FALSE) AS interviewing,
+                       COALESCE(invite_sent,   FALSE) AS invite_sent,
+                       COALESCE(hired,         FALSE) AS hired
+                FROM public.analyses
+                WHERE job_id IN ({placeholders})
+                """,
+                ids,
+            )
+            rows = cursor.fetchall()
+
+        # Build a lookup keyed by job_id.
+        analysis_map = {
+            row[0]: {
+                "proposal_draft": row[1],
+                "interviewing": row[2],
+                "invite_sent": row[3],
+                "hired": row[4],
+            }
+            for row in rows
+        }
+
+        # Load the matching Job rows and merge the refreshed analysis data.
+        jobs = Job.objects.filter(id__in=ids)
+        serializer = LeadSerializer(jobs, many=True)
+        data = serializer.data
+
+        # Overlay the refreshed values onto each serialized job.
+        result = []
+        for job_data in data:
+            analysis = analysis_map.get(str(job_data["id"]), {})
+            merged = dict(job_data)
+            merged["proposal_draft"] = analysis.get("proposal_draft", "")
+            merged["interviewing"] = analysis.get("interviewing", False)
+            merged["invite_sent"] = analysis.get("invite_sent", False)
+            merged["hired"] = analysis.get("hired", False)
+            result.append(merged)
+
+        return Response(result)
