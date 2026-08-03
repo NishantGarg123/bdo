@@ -1,5 +1,5 @@
 """
-Dashboard API — aggregate lead statistics.
+Dashboard API — aggregate job statistics.
 
 Future enhancements: charts, date ranges, user-specific metrics.
 """
@@ -8,13 +8,13 @@ from django.db.models import Count
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from leads.models import Lead, LeadStatus
+from leads.models import Job, LeadStatus
 
 
 class DashboardView(APIView):
     def get(self, request):
         status_counts = (
-            Lead.objects.values("status")
+            Job.objects.values("status")
             .annotate(count=Count("id"))
             .order_by("status")
         )

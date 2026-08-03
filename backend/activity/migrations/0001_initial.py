@@ -43,13 +43,13 @@ class Migration(migrations.Migration):
                 ("description", models.TextField(blank=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 (
-                    "lead",
+                    "job",
                     models.ForeignKey(
                         blank=True,
                         null=True,
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="activities",
-                        to="leads.lead",
+                        to="leads.job",
                     ),
                 ),
                 (

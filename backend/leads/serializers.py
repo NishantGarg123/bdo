@@ -1,21 +1,30 @@
 """
-Lead serializers.
+Job serializers.
 """
 
 from rest_framework import serializers
 
-from .models import Lead
+from .models import Job
 
 
 class LeadSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
+    # These three fields live in public.analyses, not in the jobs table.
+    # The serializer always returns False as a safe default; real values are
+    # populated by LeadBulkRefreshView which overlays data from the analyses table.
+    interviewing = serializers.SerializerMethodField()
+    invite_sent = serializers.SerializerMethodField()
+    hired = serializers.SerializerMethodField()
+
     class Meta:
-        model = Lead
+        model = Job
         fields = [
             "id",
             "title",
+            "description",
             "url",
+            "search_keyword",
             "budget",
             "budget_min",
             "budget_max",
@@ -27,10 +36,19 @@ class LeadSerializer(serializers.ModelSerializer):
             "status_display",
             "skip_reason",
             "total_proposals",
-            "created_at",
-            "updated_at",
+            "interviewing",
+            "invite_sent",
+            "hired",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+
+    def get_interviewing(self, obj):
+        return False
+
+    def get_invite_sent(self, obj):
+        return False
+
+    def get_hired(self, obj):
+        return False
 
     def validate_skills(self, value):
         if value is None:

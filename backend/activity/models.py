@@ -1,5 +1,5 @@
 """
-Activity model — audit trail for lead-related actions.
+Activity model — audit trail for job-related actions.
 
 Future enhancements: notifications, analytics, filtering by type/user.
 """
@@ -7,7 +7,7 @@ Future enhancements: notifications, analytics, filtering by type/user.
 from django.conf import settings
 from django.db import models
 
-from leads.models import Lead
+from leads.models import Job
 
 
 class ActivityType(models.TextChoices):
@@ -26,8 +26,8 @@ class Activity(models.Model):
         null=True,
         related_name="activities",
     )
-    lead = models.ForeignKey(
-        Lead,
+    job = models.ForeignKey(
+        Job,
         on_delete=models.CASCADE,
         null=True,
         blank=True,
