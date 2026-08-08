@@ -13,7 +13,7 @@ Required columns (created automatically if absent):
   - job_id         TEXT  (join key — may or may not have a UNIQUE constraint)
   - proposal_draft TEXT  (existing — not modified here)
   - interviewing   BOOLEAN
-  - invite_sent    BOOLEAN
+  - invite_sent    INTEGER
   - hired          BOOLEAN
 
 The ``jobs.total_proposals`` column IS updated because it is part of the
@@ -70,7 +70,7 @@ def _ensure_analyses_columns(conn: PgConnection) -> None:
     """
     cols = [
         ("interviewing", "BOOLEAN DEFAULT FALSE"),
-        ("invite_sent",  "BOOLEAN DEFAULT FALSE"),
+        ("invite_sent",  "INTEGER DEFAULT 0"),
         ("hired",        "BOOLEAN DEFAULT FALSE"),
     ]
     for col_name, col_def in cols:
@@ -94,13 +94,42 @@ def _ensure_analyses_columns(conn: PgConnection) -> None:
             )
             conn.rollback()
 
+    # Older deployments created invite_sent as BOOLEAN. Preserve those values
+    # while converting the column so the Upwork invite count can be stored.
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'analyses'
+                  AND column_name = 'invite_sent'
+                """
+            )
+            column = cur.fetchone()
+            if column and column[0] == "boolean":
+                cur.execute("ALTER TABLE public.analyses ALTER COLUMN invite_sent DROP DEFAULT")
+                cur.execute(
+                    """
+                    ALTER TABLE public.analyses
+                    ALTER COLUMN invite_sent TYPE INTEGER
+                    USING CASE WHEN invite_sent THEN 1 ELSE 0 END
+                    """
+                )
+                cur.execute("ALTER TABLE public.analyses ALTER COLUMN invite_sent SET DEFAULT 0")
+        conn.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not convert public.analyses.invite_sent to INTEGER: %s", exc)
+        conn.rollback()
+
 
 # ---------------------------------------------------------------------------
 # Write helpers
 # ---------------------------------------------------------------------------
 
 def _upsert_analyses_row(conn: PgConnection, result: JobActivityResult) -> bool:
-    """Write the three boolean tracking fields to public.analyses.
+    """Write boolean status fields and the numeric invite count to analyses.
 
     Strategy: UPDATE first; if no row was matched, INSERT a stub row.
     This avoids the ON CONFLICT requirement for a UNIQUE constraint on job_id.
@@ -118,7 +147,7 @@ def _upsert_analyses_row(conn: PgConnection, result: JobActivityResult) -> bool:
     params = {
         "job_id":      result.job_id,
         "interviewing": result.interviewing,
-        "invite_sent":  result.invite_sent,
+        "invite_sent":  result.invites_sent,
         "hired":        result.hired,
     }
 
@@ -126,7 +155,7 @@ def _upsert_analyses_row(conn: PgConnection, result: JobActivityResult) -> bool:
         with conn.cursor() as cur:
             logger.info(
                 "DB UPDATE public.analyses  job_id=%r  interviewing=%s  invite_sent=%s  hired=%s",
-                result.job_id, result.interviewing, result.invite_sent, result.hired,
+                result.job_id, result.interviewing, result.invites_sent, result.hired,
             )
             cur.execute(update_sql, params)
             rows_updated = cur.rowcount

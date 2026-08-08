@@ -14,7 +14,7 @@ from .models import Job, LeadStatus
 class UpworkActivityMappingTests(SimpleTestCase):
     """Guard the ID conversion and response-field mapping used by refresh."""
 
-    def test_fetch_uses_upwork_ciphertext_and_returns_database_id(self):
+    def test_fetch_uses_plain_upwork_id_and_returns_database_id(self):
         from job_refresh import upwork_client
 
         payload = {
@@ -38,10 +38,10 @@ class UpworkActivityMappingTests(SimpleTestCase):
             result = upwork_client.fetch_job_activity("2084178164356493946")
 
         self.assertIsNotNone(result)
-        self.assertEqual(execute.call_args.args[1], {"jobId": "~022084178164356493946"})
+        self.assertEqual(execute.call_args.args[1], {"jobId": "2084178164356493946"})
         self.assertEqual(result.job_id, "2084178164356493946")
         self.assertEqual(result.total_applicants, 7)
-        self.assertTrue(result.invite_sent)
+        self.assertEqual(result.invites_sent, 2)
         self.assertTrue(result.interviewing)
         self.assertTrue(result.hired)
 

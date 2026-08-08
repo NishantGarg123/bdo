@@ -674,9 +674,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         : <span className="tracking-badge tracking-badge--no">No</span>}
                     </td>
                     <td className="cell-tracking">
-                      {lead.invite_sent
-                        ? <span className="tracking-badge tracking-badge--yes">Yes</span>
-                        : <span className="tracking-badge tracking-badge--no">No</span>}
+                      {lead.invite_sent ?? 0}
                     </td>
                     <td className="cell-tracking">
                       {lead.hired

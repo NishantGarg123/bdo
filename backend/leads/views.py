@@ -108,7 +108,39 @@ class LeadListCreateView(generics.ListCreateAPIView):
 
         offset = (page - 1) * PAGE_SIZE
         paginated = queryset[offset: offset + PAGE_SIZE]
-        serializer = self.get_serializer(paginated, many=True)
+        job_ids = [str(job.id) for job in paginated]
+        tracking_by_job_id = {}
+        if job_ids:
+            placeholders = ",".join(["%s"] * len(job_ids))
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT job_id,
+                           COALESCE(interviewing, FALSE),
+                           CASE
+                               WHEN invite_sent::text = 'true' THEN 1
+                               WHEN invite_sent::text = 'false' THEN 0
+                               ELSE COALESCE(invite_sent::text, '0')::integer
+                           END AS invite_sent,
+                           COALESCE(hired, FALSE)
+                    FROM public.analyses
+                    WHERE job_id IN ({placeholders})
+                    """,
+                    job_ids,
+                )
+                tracking_by_job_id = {
+                    row[0]: {
+                        "interviewing": row[1],
+                        "invite_sent": row[2],
+                        "hired": row[3],
+                    }
+                    for row in cursor.fetchall()
+                }
+        serializer = self.get_serializer(
+            paginated,
+            many=True,
+            context={"tracking_by_job_id": tracking_by_job_id},
+        )
 
         # Status counts — reuse same filters minus the status filter
         search = request.query_params.get("search", "").strip()
@@ -349,7 +381,7 @@ def _ensure_analyses_tracking_columns():
         try:
             for col, col_type in [
                 ("interviewing", "BOOLEAN DEFAULT FALSE"),
-                ("invite_sent", "BOOLEAN DEFAULT FALSE"),
+                ("invite_sent", "INTEGER DEFAULT 0"),
                 ("hired", "BOOLEAN DEFAULT FALSE"),
                 ("proposal_draft", "TEXT"),
             ]:
@@ -359,6 +391,26 @@ def _ensure_analyses_tracking_columns():
                     )
                 except Exception:  # noqa: BLE001
                     pass
+            cursor.execute(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'analyses'
+                  AND column_name = 'invite_sent'
+                """
+            )
+            column = cursor.fetchone()
+            if column and column[0] == "boolean":
+                cursor.execute("ALTER TABLE public.analyses ALTER COLUMN invite_sent DROP DEFAULT")
+                cursor.execute(
+                    """
+                    ALTER TABLE public.analyses
+                    ALTER COLUMN invite_sent TYPE INTEGER
+                    USING CASE WHEN invite_sent THEN 1 ELSE 0 END
+                    """
+                )
+                cursor.execute("ALTER TABLE public.analyses ALTER COLUMN invite_sent SET DEFAULT 0")
         finally:
             connection.set_autocommit(old_autocommit)
 
@@ -431,7 +483,7 @@ class LeadBulkRefreshView(APIView):
                 SELECT job_id,
                        COALESCE(proposal_draft, '') AS proposal_draft,
                        COALESCE(interviewing,  FALSE) AS interviewing,
-                       COALESCE(invite_sent,   FALSE) AS invite_sent,
+                       COALESCE(invite_sent,   0) AS invite_sent,
                        COALESCE(hired,         FALSE) AS hired
                 FROM public.analyses
                 WHERE job_id IN ({placeholders})
@@ -465,7 +517,7 @@ class LeadBulkRefreshView(APIView):
             merged = dict(job_data)
             merged["proposal_draft"] = analysis.get("proposal_draft", "")
             merged["interviewing"] = analysis.get("interviewing", False)
-            merged["invite_sent"] = analysis.get("invite_sent", False)
+            merged["invite_sent"] = analysis.get("invite_sent", 0)
             merged["hired"] = analysis.get("hired", False)
             result.append(merged)
 

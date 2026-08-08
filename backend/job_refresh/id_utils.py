@@ -48,35 +48,34 @@ _RE_DB_ID = re.compile(r"^\d+$")
 
 
 def to_upwork_id(db_id: str) -> str:
-    """Convert a DB-stored job ID to the Upwork API ciphertext format.
+    """Return the plain numeric job ID required by the Upwork GraphQL API.
 
     Parameters
     ----------
     db_id:
         The job ID as stored in the ``jobs`` table (plain digits, no prefix).
-        Already-formatted ciphertext values (starting with ``~0``) are
-        returned unchanged.
+        Legacy ciphertext values (starting with ``~0``) are normalised to
+        the numeric form.
 
     Returns
     -------
     str
-        A string of the form ``~02{db_id}`` ready to pass to the Upwork
-        GraphQL API as the ``id`` argument.
+        A plain numeric job ID ready to pass to the Upwork GraphQL API.
 
     Examples
     --------
     >>> to_upwork_id("2084178164356493946")
-    '~022084178164356493946'
+    '2084178164356493946'
 
-    >>> to_upwork_id("~022084178164356493946")   # already formatted
-    '~022084178164356493946'
+    >>> to_upwork_id("~022084178164356493946")
+    '2084178164356493946'
     """
     db_id = db_id.strip()
 
     if _RE_UPWORK_ID.match(db_id):
-        # Already in Upwork ciphertext format — pass through.
-        logger.debug("ID %r is already in Upwork format — no conversion needed.", db_id)
-        return db_id
+        # Legacy ciphertext input is normalised for the GraphQL endpoint.
+        logger.debug("Normalising legacy Upwork ciphertext ID %r.", db_id)
+        return to_db_id(db_id)
 
     if not _RE_DB_ID.match(db_id):
         logger.warning(
@@ -85,10 +84,12 @@ def to_upwork_id(db_id: str) -> str:
             db_id,
         )
 
-    upwork_id = _UPWORK_JOB_PREFIX + db_id
+    # The refresh GraphQL endpoint accepts the plain numeric job ID, rather
+    # than the ciphertext used in job URLs.
+    upwork_id = db_id
     logger.info(
-        "ID conversion  DB → Upwork:  %r  →  %r  (prepended prefix %r)",
-        db_id, upwork_id, _UPWORK_JOB_PREFIX,
+        "ID normalisation for Upwork API: %r → %r",
+        db_id, upwork_id,
     )
     return upwork_id
 
