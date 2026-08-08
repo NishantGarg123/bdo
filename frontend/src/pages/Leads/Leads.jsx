@@ -438,16 +438,14 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
     setStatusMessage('');
     setStatusError('');
     try {
-      const response = await leadsAPI.bulkRefresh([...selectedIds]);
+      const ids = [...selectedIds];
+      console.info('Requesting lead refresh for selected job IDs:', ids);
+      const response = await leadsAPI.bulkRefresh(ids);
       const refreshed = response.data; // array of updated lead objects
-      const refreshedMap = Object.fromEntries(refreshed.map((l) => [l.id, l]));
-      setLeads((prev) =>
-        prev.map((lead) =>
-          refreshedMap[lead.id]
-            ? { ...lead, ...refreshedMap[lead.id] }
-            : lead
-        )
-      );
+      // Reload from the normal list endpoint after the write completes. This
+      // confirms the persisted values rather than relying on a stale local row.
+      await fetchLeads.current(page);
+      console.info('Lead refresh completed and list reloaded:', refreshed.map((lead) => lead.id));
       setStatusMessage(`Refreshed ${refreshed.length} job${refreshed.length !== 1 ? 's' : ''}.`);
     } catch (err) {
       console.error('Bulk refresh failed:', err);

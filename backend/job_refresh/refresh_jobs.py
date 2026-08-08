@@ -131,12 +131,12 @@ def refresh_jobs(job_ids: Sequence[str]) -> RefreshSummary:
     successful_results: list[JobActivityResult] = []
 
     for job_id in unique_ids:
-        logger.debug("Fetching activity for job %r …", job_id)
+        logger.info("━━━ [%d/%d] Processing job_id=%r", unique_ids.index(job_id) + 1, len(unique_ids), job_id)
         outcome = JobRefreshOutcome(job_id=job_id)
 
         activity = fetch_job_activity(job_id)
         if activity is None:
-            logger.warning("Could not fetch activity for job %r — skipping.", job_id)
+            logger.warning("✗ Could not fetch activity for job_id=%r — skipping DB write.", job_id)
             outcomes.append(outcome)
             continue
 
@@ -144,25 +144,51 @@ def refresh_jobs(job_ids: Sequence[str]) -> RefreshSummary:
         outcome.activity = activity
         successful_results.append(activity)
 
-        logger.debug(
-            "Fetched job %r: proposals=%d interviewing=%s invite_sent=%s hired=%s",
-            job_id,
+        logger.info(
+            "✓ Fetched job_id=%r  title=%r\n"
+            "    proposals    = %d\n"
+            "    interviewing = %s  (totalInvitedToInterview=%d)\n"
+            "    invite_sent  = %s  (invitesSent=%d)\n"
+            "    hired        = %s  (totalHired=%d)",
+            job_id, activity.title,
             activity.total_applicants,
-            activity.interviewing,
-            activity.invite_sent,
-            activity.hired,
+            activity.interviewing, activity.total_invited_to_interview,
+            activity.invite_sent, activity.invites_sent,
+            activity.hired, activity.total_hired,
         )
 
         outcomes.append(outcome)
 
     # ── Phase 2: write to the database (one connection for the whole batch) ──
     if successful_results:
+        logger.info("━━━ Writing %d result(s) to the database…", len(successful_results))
         write_results = persist_refresh_results(successful_results)
         wr_map = {wr.job_id: wr for wr in write_results}
 
         for outcome in outcomes:
             if outcome.fetched:
                 outcome.write_result = wr_map.get(outcome.job_id)
+
+    # ── Final per-job outcome table ──────────────────────────────────────────
+    logger.info("")
+    logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    logger.info("REFRESH RESULTS:")
+    logger.info("%-40s  %-8s  %-8s  %s", "JOB ID", "FETCHED", "WRITTEN", "STATUS")
+    logger.info("─" * 72)
+    for outcome in outcomes:
+        fetched_sym = "✓" if outcome.fetched else "✗"
+        written_sym = (
+            "✓" if outcome.write_result and outcome.write_result.success
+            else "✗" if outcome.fetched
+            else "—"
+        )
+        status = (
+            "OK" if outcome.success
+            else "FETCH FAILED" if not outcome.fetched
+            else "WRITE FAILED"
+        )
+        logger.info("%-40s  %-8s  %-8s  %s", outcome.job_id, fetched_sym, written_sym, status)
+    logger.info("─" * 72)
 
     summary = RefreshSummary(outcomes=outcomes)
     summary.log_summary()

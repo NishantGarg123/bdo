@@ -3,6 +3,7 @@ Job API views — list, create, retrieve, update, delete.
 """
 
 from datetime import timedelta
+import logging
 
 from django.db import connection, transaction
 from django.db.models import Count, Q
@@ -16,6 +17,9 @@ from activity.models import Activity, ActivityType
 
 from .models import Job, LeadStatus
 from .serializers import LeadSerializer
+
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_rejected_leads_table():
@@ -377,10 +381,47 @@ class LeadBulkRefreshView(APIView):
             )
 
         # Cap to a sane maximum to avoid accidental full-table scans.
-        ids = [str(i) for i in ids[:500]]
+        # These are the primary keys used by the UI and by the jobs/analyses
+        # tables.  The refresh service is responsible for converting them to
+        # Upwork's ciphertext form for the GraphQL request.
+        ids = list(dict.fromkeys(str(i).strip() for i in ids[:500] if str(i).strip()))
+        if not ids:
+            return Response(
+                {"detail": "ids must contain at least one non-empty job ID."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.info("Bulk refresh requested for %d job(s): %s", len(ids), ids)
 
         # Ensure the tracking columns exist before querying.
         _ensure_analyses_tracking_columns()
+
+        # This call is the actual refresh.  Previously this endpoint only
+        # queried analyses, so clicking Refresh could never fetch from Upwork
+        # or update the database.
+        try:
+            from job_refresh.refresh_jobs import refresh_jobs
+
+            summary = refresh_jobs(ids)
+        except EnvironmentError as exc:
+            logger.error("Bulk refresh configuration error for ids=%s: %s", ids, exc)
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception:  # noqa: BLE001
+            logger.exception("Bulk refresh crashed for ids=%s", ids)
+            return Response(
+                {"detail": "Refresh could not be completed. Check the server logs for details."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        logger.info(
+            "Bulk refresh service finished: requested=%d succeeded=%d fetch_failed=%s write_failed=%s",
+            len(ids), summary.succeeded, summary.fetch_failed, summary.write_failed,
+        )
+        if summary.succeeded == 0:
+            return Response(
+                {"detail": "No selected jobs were refreshed. Check the server logs for the Upwork or database error."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         # Fetch fresh analysis data for each requested job.
         with connection.cursor() as cursor:
@@ -398,6 +439,8 @@ class LeadBulkRefreshView(APIView):
                 ids,
             )
             rows = cursor.fetchall()
+
+        logger.info("Bulk refresh read-back found %d analyses row(s) for %d requested job(s)", len(rows), len(ids))
 
         # Build a lookup keyed by job_id.
         analysis_map = {
@@ -425,5 +468,7 @@ class LeadBulkRefreshView(APIView):
             merged["invite_sent"] = analysis.get("invite_sent", False)
             merged["hired"] = analysis.get("hired", False)
             result.append(merged)
+
+        logger.info("Bulk refresh returning %d refreshed job(s)", len(result))
 
         return Response(result)
