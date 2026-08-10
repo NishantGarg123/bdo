@@ -540,12 +540,17 @@ textarea {
 /* Leads */
 .toolbar {
   display: flex;
+  align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+  width: 100%;
+  max-width: calc(100vw - var(--sidebar-width) - 64px);
+  box-sizing: border-box;
 }
 
 .search-box {
   flex: 1;
+  min-width: 0;
 }
 
 .search-box input {
@@ -569,6 +574,41 @@ textarea {
   background: var(--color-surface);
   color: var(--color-text);
   min-width: 160px;
+}
+
+.toolbar-time-filter {
+  flex: 0 0 auto;
+  width: 276px;
+}
+
+.status-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -12px 0 16px;
+  max-width: calc(100vw - var(--sidebar-width) - 64px);
+}
+
+.status-filter-option {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-filter-option:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.status-filter-option--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
 
 /* Leads summary bar */
@@ -1201,6 +1241,16 @@ textarea {
 
   .toolbar {
     flex-direction: column;
+    max-width: calc(100vw - 32px);
+    align-items: stretch;
+  }
+
+  .toolbar-time-filter {
+    width: 100%;
+  }
+
+  .status-filter-row {
+    max-width: calc(100vw - 32px);
   }
 
   .integrations-grid {

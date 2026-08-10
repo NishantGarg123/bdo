@@ -472,6 +472,22 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
         </button>
       </div>
 
+      {!fixedStatus && (
+        <div className="status-filter-row" aria-label="Status filter">
+          {STATUS_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`status-filter-option${statusFilter === opt.value ? ' status-filter-option--active' : ''}`}
+              onClick={() => setSelectedStatusFilter(opt.value)}
+              aria-pressed={statusFilter === opt.value}
+            >
+              {statusLabel(opt)}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="toolbar">
         <div className="search-box">
           <input
@@ -481,38 +497,20 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="filters-placeholder">
-          {!fixedStatus && (
-            <>
-              {/* Status filter with counts */}
-              <select
-                value={statusFilter}
-                onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                className="filter-select"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {statusLabel(opt)}
-                  </option>
-                ))}
-              </select>
-
-              {/* Time filter */}
-              <select
-                value={timeFilter}
-                onChange={(e) => setSelectedTimeFilter(e.target.value)}
-                className="filter-select"
-                aria-label="Time range filter"
-              >
-                {TIME_FILTER_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-        </div>
+        {!fixedStatus && (
+          <select
+            value={timeFilter}
+            onChange={(e) => setSelectedTimeFilter(e.target.value)}
+            className="filter-select toolbar-time-filter"
+            aria-label="Time range filter"
+          >
+            {TIME_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Summary row */}
