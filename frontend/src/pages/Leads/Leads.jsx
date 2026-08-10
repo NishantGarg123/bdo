@@ -127,6 +127,10 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
   // reuses this component (for example, Leads -> Applied Leads).
   const statusFilter = fixedStatus || selectedStatusFilter;
   const timeFilter = fixedStatus ? 'all' : selectedTimeFilter;
+  // The main Leads page keeps its normal filtered list (including the chosen
+  // time window and tracking fields) and augments rejected rows with the
+  // reasons from the existing rejected-leads endpoint.
+  const isRejectedView = fixedStatus === 'rejected' || (!fixedStatus && statusFilter === 'rejected');
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -174,11 +178,32 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
       const params = { page: pg, time_filter: tf };
       if (s) params.search = s;
       if (sf) params.status = sf;
-      const response = fixedStatus === 'applied'
-        ? await leadsAPI.getApplied(params)
-        : fixedStatus === 'rejected'
-          ? await leadsAPI.getRejected({ search: s })
-          : await leadsAPI.getAll(params);
+      let response;
+      if (fixedStatus === 'applied') {
+        response = await leadsAPI.getApplied(params);
+      } else if (fixedStatus === 'rejected') {
+        // Keep the dedicated Rejected Leads tab exactly as it is.
+        response = await leadsAPI.getRejected({ search: s });
+      } else if (isRejectedView) {
+        const [leadsResponse, rejectedResponse] = await Promise.all([
+          leadsAPI.getAll(params),
+          leadsAPI.getRejected({ search: s }),
+        ]);
+        const reasonsByLeadId = new Map(
+          rejectedResponse.data.map((lead) => [lead.id, lead.rejection_reason]),
+        );
+        response = {
+          data: {
+            ...leadsResponse.data,
+            results: (leadsResponse.data.results || []).map((lead) => ({
+              ...lead,
+              rejection_reason: reasonsByLeadId.get(lead.id),
+            })),
+          },
+        };
+      } else {
+        response = await leadsAPI.getAll(params);
+      }
       const data = response.data;
       // Filter changes may issue another request before this one returns.
       if (requestId !== latestRequestId.current) return;
@@ -585,10 +610,10 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                   <th>Hired</th>
                   <th>Proposals</th>
                   <th>Status</th>
+                  {isRejectedView && <th>Reason</th>}
                   {!fixedStatus && statusFilter === 'skipped' && <th>Skip Reason</th>}
                   <th>Posted At</th>
                   <th>Fetched At</th>
-                  {fixedStatus === 'rejected' && <th>Reason</th>}
                   <th>Apply</th>
                   <th>View</th>
                 </tr>
@@ -707,12 +732,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                     <td>
                       <StatusBadge status={lead.status} label={lead.status_display} />
                     </td>
-                    {!fixedStatus && statusFilter === 'skipped' && (
-                      <td className="cell-muted">{lead.skip_reason || '—'}</td>
-                    )}
-                    <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
-                    <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
-                    {fixedStatus === 'rejected' && (
+                    {isRejectedView && (
                       <td>
                         <button
                           type="button"
@@ -723,6 +743,11 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         </button>
                       </td>
                     )}
+                    {!fixedStatus && statusFilter === 'skipped' && (
+                      <td className="cell-muted">{lead.skip_reason || '—'}</td>
+                    )}
+                    <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
+                    <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
                     <td>
                       <button
                         type="button"
