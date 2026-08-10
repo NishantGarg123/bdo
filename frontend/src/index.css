@@ -824,6 +824,16 @@ textarea {
   max-width: 220px;
 }
 
+.lead-title-link {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.lead-title-link:hover,
+.lead-title-link:focus-visible {
+  text-decoration: underline;
+}
+
 .cell-skills {
   min-width: 140px;
   max-width: 200px;

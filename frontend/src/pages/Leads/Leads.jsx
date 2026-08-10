@@ -577,7 +577,6 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                   </th>
                   {fixedStatus !== 'applied' && fixedStatus !== 'rejected' && <th>Actions</th>}
                   <th>Title</th>
-                  <th>URL</th>
                   <th>Search Keyword</th>
                   <th>Budget</th>
                   <th>Job Type</th>
@@ -654,9 +653,23 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         </div>
                       </td>
                     )}
-                    <td className="cell-bold cell-title">{lead.title}</td>
-                    <td>
+                    <td className="cell-bold cell-title">
                       {lead.url ? (
+                        <a
+                          href={lead.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="lead-title-link"
+                        >
+                          {lead.title}
+                        </a>
+                      ) : (
+                        lead.title
+                      )}
+                    </td>
+                    {false && (
+                      <td>
+                        {lead.url ? (
                         <a
                           href={lead.url}
                           target="_blank"
@@ -669,6 +682,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         '—'
                       )}
                     </td>
+                    )}
                     <td>{lead.search_keyword || 'NA'}</td>
                     <td>{formatBudget(lead)}</td>
                     <td>{lead.job_type || '—'}</td>
