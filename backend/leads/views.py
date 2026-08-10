@@ -97,6 +97,9 @@ class LeadListCreateView(generics.ListCreateAPIView):
         )
 
     def list(self, request, *args, **kwargs):
+        # New installations may not yet have the externally managed tracking
+        # columns until the first refresh, so ensure them before reading.
+        _ensure_analyses_tracking_columns()
         queryset = self.get_queryset()
         total = queryset.count()
 
@@ -117,6 +120,7 @@ class LeadListCreateView(generics.ListCreateAPIView):
                     f"""
                     SELECT job_id,
                            COALESCE(interviewing, FALSE),
+                           COALESCE(interview_count, 0),
                            CASE
                                WHEN invite_sent::text = 'true' THEN 1
                                WHEN invite_sent::text = 'false' THEN 0
@@ -131,8 +135,9 @@ class LeadListCreateView(generics.ListCreateAPIView):
                 tracking_by_job_id = {
                     row[0]: {
                         "interviewing": row[1],
-                        "invite_sent": row[2],
-                        "hired": row[3],
+                        "interview_count": row[2],
+                        "invite_sent": row[3],
+                        "hired": row[4],
                     }
                     for row in cursor.fetchall()
                 }
@@ -371,7 +376,7 @@ class LeadAnalysisView(APIView):
 
 
 def _ensure_analyses_tracking_columns():
-    """Ensure interviewing, invite_sent, and hired columns exist on public.analyses.
+    """Ensure tracking columns exist on public.analyses.
 
     Runs in autocommit mode so DDL commits immediately.
     """
@@ -381,6 +386,7 @@ def _ensure_analyses_tracking_columns():
         try:
             for col, col_type in [
                 ("interviewing", "BOOLEAN DEFAULT FALSE"),
+                ("interview_count", "INTEGER DEFAULT 0"),
                 ("invite_sent", "INTEGER DEFAULT 0"),
                 ("hired", "BOOLEAN DEFAULT FALSE"),
                 ("proposal_draft", "TEXT"),
@@ -483,6 +489,7 @@ class LeadBulkRefreshView(APIView):
                 SELECT job_id,
                        COALESCE(proposal_draft, '') AS proposal_draft,
                        COALESCE(interviewing,  FALSE) AS interviewing,
+                       COALESCE(interview_count, 0) AS interview_count,
                        COALESCE(invite_sent,   0) AS invite_sent,
                        COALESCE(hired,         FALSE) AS hired
                 FROM public.analyses
@@ -499,8 +506,9 @@ class LeadBulkRefreshView(APIView):
             row[0]: {
                 "proposal_draft": row[1],
                 "interviewing": row[2],
-                "invite_sent": row[3],
-                "hired": row[4],
+                "interview_count": row[3],
+                "invite_sent": row[4],
+                "hired": row[5],
             }
             for row in rows
         }
@@ -517,6 +525,7 @@ class LeadBulkRefreshView(APIView):
             merged = dict(job_data)
             merged["proposal_draft"] = analysis.get("proposal_draft", "")
             merged["interviewing"] = analysis.get("interviewing", False)
+            merged["interview_count"] = analysis.get("interview_count", 0)
             merged["invite_sent"] = analysis.get("invite_sent", 0)
             merged["hired"] = analysis.get("hired", False)
             result.append(merged)

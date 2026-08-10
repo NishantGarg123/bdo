@@ -13,6 +13,7 @@ Required columns (created automatically if absent):
   - job_id         TEXT  (join key — may or may not have a UNIQUE constraint)
   - proposal_draft TEXT  (existing — not modified here)
   - interviewing   BOOLEAN
+  - interview_count INTEGER
   - invite_sent    INTEGER
   - hired          BOOLEAN
 
@@ -70,6 +71,7 @@ def _ensure_analyses_columns(conn: PgConnection) -> None:
     """
     cols = [
         ("interviewing", "BOOLEAN DEFAULT FALSE"),
+        ("interview_count", "INTEGER DEFAULT 0"),
         ("invite_sent",  "INTEGER DEFAULT 0"),
         ("hired",        "BOOLEAN DEFAULT FALSE"),
     ]
@@ -140,6 +142,7 @@ def _upsert_analyses_row(conn: PgConnection, result: JobActivityResult) -> bool:
     update_sql = """
         UPDATE public.analyses
         SET interviewing = %(interviewing)s,
+            interview_count = %(interview_count)s,
             invite_sent  = %(invite_sent)s,
             hired        = %(hired)s
         WHERE job_id = %(job_id)s
@@ -147,6 +150,7 @@ def _upsert_analyses_row(conn: PgConnection, result: JobActivityResult) -> bool:
     params = {
         "job_id":      result.job_id,
         "interviewing": result.interviewing,
+        "interview_count": result.total_invited_to_interview,
         "invite_sent":  result.invites_sent,
         "hired":        result.hired,
     }
@@ -154,8 +158,8 @@ def _upsert_analyses_row(conn: PgConnection, result: JobActivityResult) -> bool:
     try:
         with conn.cursor() as cur:
             logger.info(
-                "DB UPDATE public.analyses  job_id=%r  interviewing=%s  invite_sent=%s  hired=%s",
-                result.job_id, result.interviewing, result.invites_sent, result.hired,
+                "DB UPDATE public.analyses  job_id=%r  interviewing=%s  interview_count=%s  invite_sent=%s  hired=%s",
+                result.job_id, result.interviewing, result.total_invited_to_interview, result.invites_sent, result.hired,
             )
             cur.execute(update_sql, params)
             rows_updated = cur.rowcount
@@ -182,8 +186,8 @@ def _upsert_analyses_row(conn: PgConnection, result: JobActivityResult) -> bool:
         "No existing analyses row for job_id=%r — inserting stub row.", result.job_id
     )
     insert_sql = """
-        INSERT INTO public.analyses (job_id, interviewing, invite_sent, hired)
-        VALUES (%(job_id)s, %(interviewing)s, %(invite_sent)s, %(hired)s)
+        INSERT INTO public.analyses (job_id, interviewing, interview_count, invite_sent, hired)
+        VALUES (%(job_id)s, %(interviewing)s, %(interview_count)s, %(invite_sent)s, %(hired)s)
     """
     try:
         with conn.cursor() as cur:

@@ -669,8 +669,11 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                     <td>{lead.total_proposals ?? 0}</td>
                     {/* New tracking columns */}
                     <td className="cell-tracking">
-                      {lead.interviewing
-                        ? <span className="tracking-badge tracking-badge--yes">Yes</span>
+                      {lead.interviewing && Number(lead.interview_count) > 0
+                        ? <span className="tracking-badge-with-count">
+                            <span className="tracking-badge tracking-badge--yes">Yes</span>
+                            <sup className="tracking-count">{lead.interview_count}</sup>
+                          </span>
                         : <span className="tracking-badge tracking-badge--no">No</span>}
                     </td>
                     <td className="cell-tracking">
