@@ -90,7 +90,6 @@ textarea {
 .content-area {
   flex: 1;
   padding: 28px 32px;
-  overflow-y: auto;
 }
 
 /* Sidebar */
@@ -654,17 +653,36 @@ textarea {
   cursor: not-allowed;
 }
 
+.btn-row-refresh {
+  min-width: 30px;
+  padding: 4px 7px;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+
+.btn-row-refresh:hover:not(:disabled) {
+  background: var(--color-primary-light);
+}
+
+.btn-row-refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .table-card,
 .timeline-card {
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .table-wrapper {
-  overflow-x: auto;
+  /* Keep the table in the page scroll context so sticky headers work. */
+  overflow: visible;
 }
 
 .data-table {
@@ -673,6 +691,9 @@ textarea {
 }
 
 .data-table th {
+  position: sticky;
+  top: calc(var(--topnav-height) + 60px);
+  z-index: 20;
   text-align: left;
   padding: 12px 20px;
   font-size: 0.75rem;
@@ -1197,7 +1218,13 @@ textarea {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  height: 60px;
+  margin-bottom: 0;
+  box-sizing: border-box;
+  position: sticky;
+  top: var(--topnav-height);
+  z-index: 30;
+  background: var(--color-surface);
 }
 
 .btn-refresh {

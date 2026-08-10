@@ -441,7 +441,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
       const ids = [...selectedIds];
       console.info('Requesting lead refresh for selected job IDs:', ids);
       const response = await leadsAPI.bulkRefresh(ids);
-      const refreshed = response.data; // array of updated lead objects
+      const refreshed = response.data;
       // Reload from the normal list endpoint after the write completes. This
       // confirms the persisted values rather than relying on a stale local row.
       await fetchLeads.current(page);
@@ -637,6 +637,22 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                           >
                             {isSubmittingRejection && rejectingLead?.id === lead.id ? '…' : '×'}
                           </button>
+                          {selectedIds.size === 1 && selectedIds.has(lead.id) && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-row-refresh"
+                              title="Refresh this selected job"
+                              aria-label="Refresh this selected job"
+                              disabled={isRefreshing}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleRefresh();
+                              }}
+                            >
+                              {isRefreshing ? <span className="btn-refresh-spinner" aria-hidden="true" /> : '↻'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}
