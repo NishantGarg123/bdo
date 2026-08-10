@@ -583,14 +583,14 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                   <th>Search Keyword</th>
                   <th>Budget</th>
                   <th>Job Type</th>
+                  <th>Interviewing</th>
+                  <th>Invite Sent</th>
+                  <th>Hired</th>
                   <th>Posted At</th>
                   <th>Fetched At</th>
                   <th>Status</th>
                   {!fixedStatus && statusFilter === 'skipped' && <th>Skip Reason</th>}
                   <th>Proposals</th>
-                  <th>Interviewing</th>
-                  <th>Invite Sent</th>
-                  <th>Hired</th>
                   {fixedStatus === 'rejected' && <th>Reason</th>}
                   <th>Apply</th>
                   <th>View</th>
@@ -658,16 +658,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                     <td>{lead.search_keyword || 'NA'}</td>
                     <td>{formatBudget(lead)}</td>
                     <td>{lead.job_type || '—'}</td>
-                    <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
-                    <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
-                    <td>
-                      <StatusBadge status={lead.status} label={lead.status_display} />
-                    </td>
-                    {!fixedStatus && statusFilter === 'skipped' && (
-                      <td className="cell-muted">{lead.skip_reason || '—'}</td>
-                    )}
-                    <td>{lead.total_proposals ?? 0}</td>
-                    {/* New tracking columns */}
+                    {/* Tracking columns */}
                     <td className="cell-tracking">
                       {lead.interviewing && Number(lead.interview_count) > 0
                         ? <span className="tracking-badge-with-count">
@@ -684,6 +675,15 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         ? <span className="tracking-badge tracking-badge--yes">Yes</span>
                         : <span className="tracking-badge tracking-badge--no">No</span>}
                     </td>
+                    <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
+                    <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
+                    <td>
+                      <StatusBadge status={lead.status} label={lead.status_display} />
+                    </td>
+                    {!fixedStatus && statusFilter === 'skipped' && (
+                      <td className="cell-muted">{lead.skip_reason || '—'}</td>
+                    )}
+                    <td className="cell-proposals">{lead.total_proposals ?? 0}</td>
                     {fixedStatus === 'rejected' && (
                       <td>
                         <button

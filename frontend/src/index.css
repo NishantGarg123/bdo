@@ -1253,6 +1253,10 @@ textarea {
   text-align: center;
 }
 
+.cell-proposals {
+  text-align: center;
+}
+
 .tracking-badge {
   display: inline-block;
   padding: 2px 8px;
