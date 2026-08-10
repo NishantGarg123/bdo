@@ -584,11 +584,11 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                   <th>Interviewing</th>
                   <th>Invite Sent</th>
                   <th>Hired</th>
-                  <th>Posted At</th>
-                  <th>Fetched At</th>
+                  <th>Proposals</th>
                   <th>Status</th>
                   {!fixedStatus && statusFilter === 'skipped' && <th>Skip Reason</th>}
-                  <th>Proposals</th>
+                  <th>Posted At</th>
+                  <th>Fetched At</th>
                   {fixedStatus === 'rejected' && <th>Reason</th>}
                   <th>Apply</th>
                   <th>View</th>
@@ -689,15 +689,15 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         ? <span className="tracking-badge tracking-badge--yes">Yes</span>
                         : <span className="tracking-badge tracking-badge--no">No</span>}
                     </td>
-                    <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
-                    <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
+                    <td className="cell-proposals">{lead.total_proposals ?? 0}</td>
                     <td>
                       <StatusBadge status={lead.status} label={lead.status_display} />
                     </td>
                     {!fixedStatus && statusFilter === 'skipped' && (
                       <td className="cell-muted">{lead.skip_reason || '—'}</td>
                     )}
-                    <td className="cell-proposals">{lead.total_proposals ?? 0}</td>
+                    <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
+                    <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
                     {fixedStatus === 'rejected' && (
                       <td>
                         <button
