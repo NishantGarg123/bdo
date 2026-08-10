@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "leads",
     "activity",
     "integrations",
+    "projects",
 ]
 
 MIDDLEWARE = [

@@ -70,4 +70,16 @@ export const integrationsAPI = {
   getAll: () => api.get('/integrations/'),
 };
 
+export const projectsAPI = {
+  getAll: (params) => api.get('/projects/', { params }),
+  create: (data) => api.post('/projects/', data),
+  getById: (id) => api.get(`/projects/${id}/`),
+  update: (id, data) => api.patch(`/projects/${id}/`, data),
+  getIssues: (projectId, params) => api.get(`/projects/${projectId}/issues/`, { params }),
+  createIssue: (projectId, data) => api.post(`/projects/${projectId}/issues/`, data),
+  getIssue: (id) => api.get(`/issues/${id}/`),
+  updateIssue: (id, data) => api.patch(`/issues/${id}/`, data),
+  getKnowledgeBase: (params) => api.get('/knowledge-base/', { params }),
+};
+
 export default api;
