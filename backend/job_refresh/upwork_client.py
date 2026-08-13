@@ -14,14 +14,23 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from pathlib import Path
 from typing import Any
 
 import requests
+from dotenv import set_key
 
-from .config import GRAPHQL_ENDPOINT, UPWORK_ACCESS_TOKEN
+from .config import GRAPHQL_ENDPOINT
 from .id_utils import to_db_id, to_upwork_id
 
 logger = logging.getLogger(__name__)
+
+_TOKEN_URL = "https://www.upwork.com/api/v3/oauth2/token"
+# The project root .env has priority in config.py and is the file used by the
+# application deployment. If it is read-only in Docker, the process-level
+# environment update below still lets the current refresh continue.
+_ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 # ---------------------------------------------------------------------------
@@ -62,15 +71,86 @@ query getJobActivity($jobId: ID!) {
 
 def _build_headers() -> dict[str, str]:
     """Return the HTTP headers required for every Upwork GraphQL request."""
-    if not UPWORK_ACCESS_TOKEN:
+    access_token = (os.getenv("UPWORK_ACCESS_TOKEN") or "").strip("'\"")
+    if not access_token:
         raise EnvironmentError(
             "UPWORK_ACCESS_TOKEN is not set. "
             "Add it to backend/.env or the project root .env."
         )
     return {
-        "Authorization": f"Bearer {UPWORK_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
+
+
+def _refresh_if_needed(resp: requests.Response) -> bool:
+    """Refresh a rejected access token once and make it immediately available.
+
+    This intentionally returns only whether retrying the original request is
+    appropriate. The caller owns the single retry, preventing refresh loops.
+    """
+    if resp.status_code != 401:
+        return False
+
+    logger.info("Got 401 — attempting token refresh…")
+
+    refresh = (os.getenv("UPWORK_REFRESH_TOKEN") or "").strip("'\"")
+    if not refresh:
+        logger.error("✗ Token refresh aborted: UPWORK_REFRESH_TOKEN is not set or empty.")
+        return False
+
+    client_id = (os.getenv("UPWORK_CLIENT_KEY") or "").strip("'\"")
+    client_secret = (os.getenv("UPWORK_CLIENT_SECRET") or "").strip("'\"")
+
+    if not client_id or not client_secret:
+        logger.error(
+            "✗ Token refresh aborted: UPWORK_CLIENT_KEY=%s  UPWORK_CLIENT_SECRET=%s",
+            "SET" if client_id else "MISSING",
+            "SET" if client_secret else "MISSING",
+        )
+        return False
+
+    try:
+        token_response = requests.post(
+            _TOKEN_URL,
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+            timeout=30,
+        )
+        if not token_response.ok:
+            logger.error(
+                "✗ Token refresh failed: Upwork returned HTTP %s. Body: %s",
+                token_response.status_code,
+                token_response.text[:500],
+            )
+            return False
+        tokens = token_response.json()
+        access_token = tokens.get("access_token")
+        if not access_token:
+            logger.error("✗ Token refresh response missing 'access_token'. Body: %s", tokens)
+            return False
+    except (requests.RequestException, ValueError) as exc:
+        logger.error("✗ Token refresh request failed with exception: %s", exc)
+        return False
+
+    os.environ["UPWORK_ACCESS_TOKEN"] = access_token
+    if tokens.get("refresh_token"):
+        os.environ["UPWORK_REFRESH_TOKEN"] = tokens["refresh_token"]
+
+    try:
+        set_key(_ENV_FILE, "UPWORK_ACCESS_TOKEN", access_token)
+        if tokens.get("refresh_token"):
+            set_key(_ENV_FILE, "UPWORK_REFRESH_TOKEN", tokens["refresh_token"])
+        logger.info("✓ New tokens written to %s", _ENV_FILE)
+    except Exception:  # .env can be read-only in Docker; env values still work.
+        logger.info("Could not write tokens to %s (read-only?); os.environ updated instead.", _ENV_FILE)
+
+    logger.info("✓ Upwork access token refreshed; retrying the failed request once.")
+    return True
 
 
 def _execute(query: str, variables: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -95,6 +175,18 @@ def _execute(query: str, variables: dict[str, Any] | None = None) -> dict[str, A
     except requests.RequestException as exc:
         logger.error("✗ Network error calling Upwork GraphQL API: %s", exc)
         return None
+
+    if _refresh_if_needed(response):
+        try:
+            response = requests.post(
+                GRAPHQL_ENDPOINT,
+                headers=_build_headers(),
+                json={"query": query, "variables": variables or {}},
+                timeout=30,
+            )
+        except requests.RequestException as exc:
+            logger.error("âœ— Network error retrying Upwork GraphQL API: %s", exc)
+            return None
 
     logger.info("← Upwork API response  HTTP %s", response.status_code)
 
