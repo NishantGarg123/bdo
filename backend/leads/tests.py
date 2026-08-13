@@ -1,12 +1,49 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import connection
+from django.test import SimpleTestCase
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITransactionTestCase
 
 from .models import Job, LeadStatus
+
+
+class UpworkActivityMappingTests(SimpleTestCase):
+    """Guard the ID conversion and response-field mapping used by refresh."""
+
+    def test_fetch_uses_plain_upwork_id_and_returns_database_id(self):
+        from job_refresh import upwork_client
+
+        payload = {
+            "data": {
+                "marketplaceJobPosting": {
+                    "id": "~022084178164356493946",
+                    "content": {"title": "Example job"},
+                    "totalApplicants": 7,
+                    "activityStat": {
+                        "jobActivity": {
+                            "invitesSent": 2,
+                            "totalInvitedToInterview": 1,
+                            "totalHired": 1,
+                        }
+                    },
+                }
+            }
+        }
+
+        with patch.object(upwork_client, "_execute", return_value=payload) as execute:
+            result = upwork_client.fetch_job_activity("2084178164356493946")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(execute.call_args.args[1], {"jobId": "2084178164356493946"})
+        self.assertEqual(result.job_id, "2084178164356493946")
+        self.assertEqual(result.total_applicants, 7)
+        self.assertEqual(result.invites_sent, 2)
+        self.assertTrue(result.interviewing)
+        self.assertTrue(result.hired)
 
 
 class LeadFilteringAndApplyTests(APITransactionTestCase):

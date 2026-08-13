@@ -127,6 +127,10 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
   // reuses this component (for example, Leads -> Applied Leads).
   const statusFilter = fixedStatus || selectedStatusFilter;
   const timeFilter = fixedStatus ? 'all' : selectedTimeFilter;
+  // The main Leads page keeps its normal filtered list (including the chosen
+  // time window and tracking fields) and augments rejected rows with the
+  // reasons from the existing rejected-leads endpoint.
+  const isRejectedView = fixedStatus === 'rejected' || (!fixedStatus && statusFilter === 'rejected');
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -174,11 +178,32 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
       const params = { page: pg, time_filter: tf };
       if (s) params.search = s;
       if (sf) params.status = sf;
-      const response = fixedStatus === 'applied'
-        ? await leadsAPI.getApplied(params)
-        : fixedStatus === 'rejected'
-          ? await leadsAPI.getRejected({ search: s })
-          : await leadsAPI.getAll(params);
+      let response;
+      if (fixedStatus === 'applied') {
+        response = await leadsAPI.getApplied(params);
+      } else if (fixedStatus === 'rejected') {
+        // Keep the dedicated Rejected Leads tab exactly as it is.
+        response = await leadsAPI.getRejected({ search: s });
+      } else if (isRejectedView) {
+        const [leadsResponse, rejectedResponse] = await Promise.all([
+          leadsAPI.getAll(params),
+          leadsAPI.getRejected({ search: s }),
+        ]);
+        const reasonsByLeadId = new Map(
+          rejectedResponse.data.map((lead) => [lead.id, lead.rejection_reason]),
+        );
+        response = {
+          data: {
+            ...leadsResponse.data,
+            results: (leadsResponse.data.results || []).map((lead) => ({
+              ...lead,
+              rejection_reason: reasonsByLeadId.get(lead.id),
+            })),
+          },
+        };
+      } else {
+        response = await leadsAPI.getAll(params);
+      }
       const data = response.data;
       // Filter changes may issue another request before this one returns.
       if (requestId !== latestRequestId.current) return;
@@ -438,16 +463,14 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
     setStatusMessage('');
     setStatusError('');
     try {
-      const response = await leadsAPI.bulkRefresh([...selectedIds]);
-      const refreshed = response.data; // array of updated lead objects
-      const refreshedMap = Object.fromEntries(refreshed.map((l) => [l.id, l]));
-      setLeads((prev) =>
-        prev.map((lead) =>
-          refreshedMap[lead.id]
-            ? { ...lead, ...refreshedMap[lead.id] }
-            : lead
-        )
-      );
+      const ids = [...selectedIds];
+      console.info('Requesting lead refresh for selected job IDs:', ids);
+      const response = await leadsAPI.bulkRefresh(ids);
+      const refreshed = response.data;
+      // Reload from the normal list endpoint after the write completes. This
+      // confirms the persisted values rather than relying on a stale local row.
+      await fetchLeads.current(page);
+      console.info('Lead refresh completed and list reloaded:', refreshed.map((lead) => lead.id));
       setStatusMessage(`Refreshed ${refreshed.length} job${refreshed.length !== 1 ? 's' : ''}.`);
     } catch (err) {
       console.error('Bulk refresh failed:', err);
@@ -474,6 +497,22 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
         </button>
       </div>
 
+      {!fixedStatus && (
+        <div className="status-filter-row" aria-label="Status filter">
+          {STATUS_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`status-filter-option${statusFilter === opt.value ? ' status-filter-option--active' : ''}`}
+              onClick={() => setSelectedStatusFilter(opt.value)}
+              aria-pressed={statusFilter === opt.value}
+            >
+              {statusLabel(opt)}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="toolbar">
         <div className="search-box">
           <input
@@ -483,38 +522,20 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="filters-placeholder">
-          {!fixedStatus && (
-            <>
-              {/* Status filter with counts */}
-              <select
-                value={statusFilter}
-                onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                className="filter-select"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {statusLabel(opt)}
-                  </option>
-                ))}
-              </select>
-
-              {/* Time filter */}
-              <select
-                value={timeFilter}
-                onChange={(e) => setSelectedTimeFilter(e.target.value)}
-                className="filter-select"
-                aria-label="Time range filter"
-              >
-                {TIME_FILTER_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-        </div>
+        {!fixedStatus && (
+          <select
+            value={timeFilter}
+            onChange={(e) => setSelectedTimeFilter(e.target.value)}
+            className="filter-select toolbar-time-filter"
+            aria-label="Time range filter"
+          >
+            {TIME_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Summary row */}
@@ -581,19 +602,18 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                   </th>
                   {fixedStatus !== 'applied' && fixedStatus !== 'rejected' && <th>Actions</th>}
                   <th>Title</th>
-                  <th>URL</th>
                   <th>Search Keyword</th>
                   <th>Budget</th>
                   <th>Job Type</th>
-                  <th>Posted At</th>
-                  <th>Fetched At</th>
-                  <th>Status</th>
-                  {!fixedStatus && statusFilter === 'skipped' && <th>Skip Reason</th>}
-                  <th>Proposals</th>
                   <th>Interviewing</th>
                   <th>Invite Sent</th>
                   <th>Hired</th>
-                  {fixedStatus === 'rejected' && <th>Reason</th>}
+                  <th>Proposals</th>
+                  <th>Status</th>
+                  {isRejectedView && <th>Reason</th>}
+                  {!fixedStatus && statusFilter === 'skipped' && <th>Skip Reason</th>}
+                  <th>Posted At</th>
+                  <th>Fetched At</th>
                   <th>Apply</th>
                   <th>View</th>
                 </tr>
@@ -639,12 +659,42 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                           >
                             {isSubmittingRejection && rejectingLead?.id === lead.id ? '…' : '×'}
                           </button>
+                          {selectedIds.size === 1 && selectedIds.has(lead.id) && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-row-refresh"
+                              title="Refresh this selected job"
+                              aria-label="Refresh this selected job"
+                              disabled={isRefreshing}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleRefresh();
+                              }}
+                            >
+                              {isRefreshing ? <span className="btn-refresh-spinner" aria-hidden="true" /> : '↻'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}
-                    <td className="cell-bold cell-title">{lead.title}</td>
-                    <td>
+                    <td className="cell-bold cell-title">
                       {lead.url ? (
+                        <a
+                          href={lead.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="lead-title-link"
+                        >
+                          {lead.title}
+                        </a>
+                      ) : (
+                        lead.title
+                      )}
+                    </td>
+                    {false && (
+                      <td>
+                        {lead.url ? (
                         <a
                           href={lead.url}
                           target="_blank"
@@ -657,35 +707,32 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         '—'
                       )}
                     </td>
+                    )}
                     <td>{lead.search_keyword || 'NA'}</td>
                     <td>{formatBudget(lead)}</td>
                     <td>{lead.job_type || '—'}</td>
-                    <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
-                    <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
-                    <td>
-                      <StatusBadge status={lead.status} label={lead.status_display} />
-                    </td>
-                    {!fixedStatus && statusFilter === 'skipped' && (
-                      <td className="cell-muted">{lead.skip_reason || '—'}</td>
-                    )}
-                    <td>{lead.total_proposals ?? 0}</td>
-                    {/* New tracking columns */}
+                    {/* Tracking columns */}
                     <td className="cell-tracking">
-                      {lead.interviewing
-                        ? <span className="tracking-badge tracking-badge--yes">Yes</span>
+                      {lead.interviewing && Number(lead.interview_count) > 0
+                        ? <span className="tracking-badge-with-count">
+                            <span className="tracking-badge tracking-badge--yes">Yes</span>
+                            <sup className="tracking-count">{lead.interview_count}</sup>
+                          </span>
                         : <span className="tracking-badge tracking-badge--no">No</span>}
                     </td>
                     <td className="cell-tracking">
-                      {lead.invite_sent
-                        ? <span className="tracking-badge tracking-badge--yes">Yes</span>
-                        : <span className="tracking-badge tracking-badge--no">No</span>}
+                      {lead.invite_sent ?? 0}
                     </td>
                     <td className="cell-tracking">
                       {lead.hired
                         ? <span className="tracking-badge tracking-badge--yes">Yes</span>
                         : <span className="tracking-badge tracking-badge--no">No</span>}
                     </td>
-                    {fixedStatus === 'rejected' && (
+                    <td className="cell-proposals">{lead.total_proposals ?? 0}</td>
+                    <td>
+                      <StatusBadge status={lead.status} label={lead.status_display} />
+                    </td>
+                    {isRejectedView && (
                       <td>
                         <button
                           type="button"
@@ -696,6 +743,11 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         </button>
                       </td>
                     )}
+                    {!fixedStatus && statusFilter === 'skipped' && (
+                      <td className="cell-muted">{lead.skip_reason || '—'}</td>
+                    )}
+                    <td className="cell-date">{formatDateTime(lead.posted_at)}</td>
+                    <td className="cell-date">{formatDateTime(lead.fetched_at)}</td>
                     <td>
                       <button
                         type="button"

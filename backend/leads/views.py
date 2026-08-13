@@ -3,6 +3,7 @@ Job API views — list, create, retrieve, update, delete.
 """
 
 from datetime import timedelta
+import logging
 
 from django.db import connection, transaction
 from django.db.models import Count, Q
@@ -16,6 +17,9 @@ from activity.models import Activity, ActivityType
 
 from .models import Job, LeadStatus
 from .serializers import LeadSerializer
+
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_rejected_leads_table():
@@ -93,6 +97,9 @@ class LeadListCreateView(generics.ListCreateAPIView):
         )
 
     def list(self, request, *args, **kwargs):
+        # New installations may not yet have the externally managed tracking
+        # columns until the first refresh, so ensure them before reading.
+        _ensure_analyses_tracking_columns()
         queryset = self.get_queryset()
         total = queryset.count()
 
@@ -104,7 +111,41 @@ class LeadListCreateView(generics.ListCreateAPIView):
 
         offset = (page - 1) * PAGE_SIZE
         paginated = queryset[offset: offset + PAGE_SIZE]
-        serializer = self.get_serializer(paginated, many=True)
+        job_ids = [str(job.id) for job in paginated]
+        tracking_by_job_id = {}
+        if job_ids:
+            placeholders = ",".join(["%s"] * len(job_ids))
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT job_id,
+                           COALESCE(interviewing, FALSE),
+                           COALESCE(interview_count, 0),
+                           CASE
+                               WHEN invite_sent::text = 'true' THEN 1
+                               WHEN invite_sent::text = 'false' THEN 0
+                               ELSE COALESCE(invite_sent::text, '0')::integer
+                           END AS invite_sent,
+                           COALESCE(hired, FALSE)
+                    FROM public.analyses
+                    WHERE job_id IN ({placeholders})
+                    """,
+                    job_ids,
+                )
+                tracking_by_job_id = {
+                    row[0]: {
+                        "interviewing": row[1],
+                        "interview_count": row[2],
+                        "invite_sent": row[3],
+                        "hired": row[4],
+                    }
+                    for row in cursor.fetchall()
+                }
+        serializer = self.get_serializer(
+            paginated,
+            many=True,
+            context={"tracking_by_job_id": tracking_by_job_id},
+        )
 
         # Status counts — reuse same filters minus the status filter
         search = request.query_params.get("search", "").strip()
@@ -335,7 +376,7 @@ class LeadAnalysisView(APIView):
 
 
 def _ensure_analyses_tracking_columns():
-    """Ensure interviewing, invite_sent, and hired columns exist on public.analyses.
+    """Ensure tracking columns exist on public.analyses.
 
     Runs in autocommit mode so DDL commits immediately.
     """
@@ -345,7 +386,8 @@ def _ensure_analyses_tracking_columns():
         try:
             for col, col_type in [
                 ("interviewing", "BOOLEAN DEFAULT FALSE"),
-                ("invite_sent", "BOOLEAN DEFAULT FALSE"),
+                ("interview_count", "INTEGER DEFAULT 0"),
+                ("invite_sent", "INTEGER DEFAULT 0"),
                 ("hired", "BOOLEAN DEFAULT FALSE"),
                 ("proposal_draft", "TEXT"),
             ]:
@@ -355,6 +397,26 @@ def _ensure_analyses_tracking_columns():
                     )
                 except Exception:  # noqa: BLE001
                     pass
+            cursor.execute(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'analyses'
+                  AND column_name = 'invite_sent'
+                """
+            )
+            column = cursor.fetchone()
+            if column and column[0] == "boolean":
+                cursor.execute("ALTER TABLE public.analyses ALTER COLUMN invite_sent DROP DEFAULT")
+                cursor.execute(
+                    """
+                    ALTER TABLE public.analyses
+                    ALTER COLUMN invite_sent TYPE INTEGER
+                    USING CASE WHEN invite_sent THEN 1 ELSE 0 END
+                    """
+                )
+                cursor.execute("ALTER TABLE public.analyses ALTER COLUMN invite_sent SET DEFAULT 0")
         finally:
             connection.set_autocommit(old_autocommit)
 
@@ -377,10 +439,47 @@ class LeadBulkRefreshView(APIView):
             )
 
         # Cap to a sane maximum to avoid accidental full-table scans.
-        ids = [str(i) for i in ids[:500]]
+        # These are the primary keys used by the UI and by the jobs/analyses
+        # tables.  The refresh service is responsible for converting them to
+        # Upwork's ciphertext form for the GraphQL request.
+        ids = list(dict.fromkeys(str(i).strip() for i in ids[:500] if str(i).strip()))
+        if not ids:
+            return Response(
+                {"detail": "ids must contain at least one non-empty job ID."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.info("Bulk refresh requested for %d job(s): %s", len(ids), ids)
 
         # Ensure the tracking columns exist before querying.
         _ensure_analyses_tracking_columns()
+
+        # This call is the actual refresh.  Previously this endpoint only
+        # queried analyses, so clicking Refresh could never fetch from Upwork
+        # or update the database.
+        try:
+            from job_refresh.refresh_jobs import refresh_jobs
+
+            summary = refresh_jobs(ids)
+        except EnvironmentError as exc:
+            logger.error("Bulk refresh configuration error for ids=%s: %s", ids, exc)
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception:  # noqa: BLE001
+            logger.exception("Bulk refresh crashed for ids=%s", ids)
+            return Response(
+                {"detail": "Refresh could not be completed. Check the server logs for details."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        logger.info(
+            "Bulk refresh service finished: requested=%d succeeded=%d fetch_failed=%s write_failed=%s",
+            len(ids), summary.succeeded, summary.fetch_failed, summary.write_failed,
+        )
+        if summary.succeeded == 0:
+            return Response(
+                {"detail": "No selected jobs were refreshed. Check the server logs for the Upwork or database error."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         # Fetch fresh analysis data for each requested job.
         with connection.cursor() as cursor:
@@ -390,7 +489,8 @@ class LeadBulkRefreshView(APIView):
                 SELECT job_id,
                        COALESCE(proposal_draft, '') AS proposal_draft,
                        COALESCE(interviewing,  FALSE) AS interviewing,
-                       COALESCE(invite_sent,   FALSE) AS invite_sent,
+                       COALESCE(interview_count, 0) AS interview_count,
+                       COALESCE(invite_sent,   0) AS invite_sent,
                        COALESCE(hired,         FALSE) AS hired
                 FROM public.analyses
                 WHERE job_id IN ({placeholders})
@@ -399,13 +499,16 @@ class LeadBulkRefreshView(APIView):
             )
             rows = cursor.fetchall()
 
+        logger.info("Bulk refresh read-back found %d analyses row(s) for %d requested job(s)", len(rows), len(ids))
+
         # Build a lookup keyed by job_id.
         analysis_map = {
             row[0]: {
                 "proposal_draft": row[1],
                 "interviewing": row[2],
-                "invite_sent": row[3],
-                "hired": row[4],
+                "interview_count": row[3],
+                "invite_sent": row[4],
+                "hired": row[5],
             }
             for row in rows
         }
@@ -422,8 +525,11 @@ class LeadBulkRefreshView(APIView):
             merged = dict(job_data)
             merged["proposal_draft"] = analysis.get("proposal_draft", "")
             merged["interviewing"] = analysis.get("interviewing", False)
-            merged["invite_sent"] = analysis.get("invite_sent", False)
+            merged["interview_count"] = analysis.get("interview_count", 0)
+            merged["invite_sent"] = analysis.get("invite_sent", 0)
             merged["hired"] = analysis.get("hired", False)
             result.append(merged)
+
+        logger.info("Bulk refresh returning %d refreshed job(s)", len(result))
 
         return Response(result)

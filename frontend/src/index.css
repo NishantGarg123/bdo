@@ -90,7 +90,6 @@ textarea {
 .content-area {
   flex: 1;
   padding: 28px 32px;
-  overflow-y: auto;
 }
 
 /* Sidebar */
@@ -541,12 +540,17 @@ textarea {
 /* Leads */
 .toolbar {
   display: flex;
+  align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+  width: 100%;
+  max-width: calc(100vw - var(--sidebar-width) - 64px);
+  box-sizing: border-box;
 }
 
 .search-box {
   flex: 1;
+  min-width: 0;
 }
 
 .search-box input {
@@ -570,6 +574,41 @@ textarea {
   background: var(--color-surface);
   color: var(--color-text);
   min-width: 160px;
+}
+
+.toolbar-time-filter {
+  flex: 0 0 auto;
+  width: 276px;
+}
+
+.status-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -12px 0 16px;
+  max-width: calc(100vw - var(--sidebar-width) - 64px);
+}
+
+.status-filter-option {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-filter-option:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.status-filter-option--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
 
 /* Leads summary bar */
@@ -654,17 +693,36 @@ textarea {
   cursor: not-allowed;
 }
 
+.btn-row-refresh {
+  min-width: 30px;
+  padding: 4px 7px;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+
+.btn-row-refresh:hover:not(:disabled) {
+  background: var(--color-primary-light);
+}
+
+.btn-row-refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .table-card,
 .timeline-card {
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .table-wrapper {
-  overflow-x: auto;
+  /* Keep the table in the page scroll context so sticky headers work. */
+  overflow: visible;
 }
 
 .data-table {
@@ -673,6 +731,9 @@ textarea {
 }
 
 .data-table th {
+  position: sticky;
+  top: calc(var(--topnav-height) + 60px);
+  z-index: 20;
   text-align: left;
   padding: 12px 20px;
   font-size: 0.75rem;
@@ -761,6 +822,16 @@ textarea {
 
 .cell-title {
   max-width: 220px;
+}
+
+.lead-title-link {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.lead-title-link:hover,
+.lead-title-link:focus-visible {
+  text-decoration: underline;
 }
 
 .cell-skills {
@@ -1180,6 +1251,16 @@ textarea {
 
   .toolbar {
     flex-direction: column;
+    max-width: calc(100vw - 32px);
+    align-items: stretch;
+  }
+
+  .toolbar-time-filter {
+    width: 100%;
+  }
+
+  .status-filter-row {
+    max-width: calc(100vw - 32px);
   }
 
   .integrations-grid {
@@ -1197,8 +1278,30 @@ textarea {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  height: 60px;
+  margin-bottom: 0;
+  box-sizing: border-box;
+  position: sticky;
+  top: var(--topnav-height);
+  z-index: 30;
+  background: var(--color-surface);
 }
+
+/* Projects & knowledge base */
+.project-grid, .knowledge-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+.project-card, .knowledge-card, .inline-form-card, .issue-form { background:var(--color-surface); border:1px solid var(--color-border-light); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:22px; }
+.project-card { transition:transform var(--transition),box-shadow var(--transition); }
+.project-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-md); }
+.project-card-top,.project-metrics,.issue-heading,.issue-row,.issue-detail-header,.project-hero { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.project-card h2,.knowledge-card h2 { font-size:1.05rem; margin:16px 0 6px; }.project-card p,.knowledge-card p { color:var(--color-text-secondary); font-size:.86rem; }
+.project-metrics { justify-content:flex-start; margin-top:20px; font-size:.78rem; color:var(--color-text-muted); }.metric-open b { color:var(--color-warning); }.metric-resolved b { color:var(--color-success); }.project-updated, .issue-date { color:var(--color-text-muted); font-size:.72rem; }
+.health,.issue-status { text-transform:uppercase; font-size:.67rem; font-weight:700; letter-spacing:.04em; border-radius:999px; padding:4px 9px; display:inline-block; }.health--healthy,.issue-status--resolved { background:var(--color-success-light); color:var(--color-success); }.health--monitoring,.issue-status--open { background:var(--color-info-light); color:var(--color-info); }.health--attention,.issue-status--not_resolved { background:var(--color-danger-light); color:var(--color-danger); }
+.inline-form-card,.issue-form { max-width:760px; margin:0 0 20px; }.inline-form-card h2,.issue-form h2 { font-size:1.05rem; margin-bottom:16px; }.project-form { max-width:620px; }.project-empty h2 { color:var(--color-text); margin-bottom:6px; }.empty-icon { font-size:1.7rem; color:var(--color-primary); margin-bottom:10px; }
+.back-link { color:var(--color-primary); font-size:.85rem; font-weight:600; display:inline-block; margin-bottom:18px; }.project-hero { align-items:flex-start; background:linear-gradient(120deg,#eff6ff,#fff); border:1px solid #dbeafe; padding:26px; border-radius:var(--radius-lg); margin-bottom:22px; }.project-hero h1,.issue-detail-header h1 { margin:10px 0 6px; font-size:1.65rem; }.project-hero p,.issue-detail-header p { color:var(--color-text-secondary); }.project-hero-actions { display:flex; gap:8px; }.issue-heading { margin:24px 0 12px; }.issue-heading h2 { font-size:1.15rem; }.issue-heading p { color:var(--color-text-muted); font-size:.85rem; }.issue-heading select { padding:8px; border:1px solid var(--color-border); border-radius:var(--radius-sm); }
+.issue-list { border:1px solid var(--color-border-light); border-radius:var(--radius-lg); overflow:hidden; background:var(--color-surface); }.issue-row { padding:16px 20px; border-bottom:1px solid var(--color-border-light); }.issue-row:last-child { border-bottom:0; }.issue-row:hover { background:var(--color-bg); }.issue-row > div { flex:1; }.issue-row h3 { font-size:.92rem; margin-bottom:3px; }.issue-row p { color:var(--color-text-muted); font-size:.8rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:650px; }
+.issue-detail-header { align-items:flex-start; margin-bottom:24px; }.knowledge-flow { display:grid; gap:14px; max-width:900px; }.knowledge-section { background:var(--color-surface); border:1px solid var(--color-border-light); border-left:3px solid var(--color-border); border-radius:var(--radius-md); padding:18px 20px; }.knowledge-section--solution { border-left-color:var(--color-success); background:#fcfffd; }.knowledge-section h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:var(--color-text-muted); margin-bottom:7px; }.knowledge-section p { white-space:pre-wrap; color:var(--color-text-secondary); }
+.knowledge-card > span { font-size:.72rem; color:var(--color-primary); font-weight:700; text-transform:uppercase; }.knowledge-problem { margin-bottom:14px; }.knowledge-solution { background:var(--color-success-light); border-radius:var(--radius-sm); padding:12px; }.knowledge-solution b { color:var(--color-success); font-size:.75rem; text-transform:uppercase; }.knowledge-solution p { margin-top:3px; white-space:pre-wrap; }.knowledge-card small { color:var(--color-text-muted); display:block; margin-top:14px; }
+@media (max-width:768px) { .project-hero,.issue-detail-header,.issue-row { flex-direction:column; align-items:flex-start; }.project-hero-actions { width:100%; }.project-hero-actions .btn { flex:1; }.issue-row p { white-space:normal; }.project-grid,.knowledge-grid { grid-template-columns:1fr; } }
 
 .btn-refresh {
   display: inline-flex;
@@ -1253,6 +1356,10 @@ textarea {
   text-align: center;
 }
 
+.cell-proposals {
+  text-align: center;
+}
+
 .tracking-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -1260,6 +1367,25 @@ textarea {
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
+.tracking-badge-with-count {
+  position: relative;
+  display: inline-block;
+}
+
+.tracking-count {
+  position: absolute;
+  top: -8px;
+  right: -9px;
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: var(--color-success);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .tracking-badge--yes {
