@@ -14,7 +14,7 @@ class ActivitySerializer(serializers.ModelSerializer):
         read_only=True,
     )
     username = serializers.CharField(source="user.username", read_only=True)
-    lead_title = serializers.CharField(source="lead.title", read_only=True)
+    job_title = serializers.CharField(source="job.title", read_only=True)
 
     class Meta:
         model = Activity
@@ -24,11 +24,11 @@ class ActivitySerializer(serializers.ModelSerializer):
             "activity_type_display",
             "username",
             "description",
-            "lead_title",
+            "job_title",
             "created_at",
         ]
 
 
 class ActivityListView(ListAPIView):
     serializer_class = ActivitySerializer
-    queryset = Activity.objects.select_related("user", "lead").all()
+    queryset = Activity.objects.select_related("user", "job").all()

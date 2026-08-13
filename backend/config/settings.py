@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "leads",
     "activity",
     "integrations",
+    "projects",
 ]
 
 MIDDLEWARE = [
@@ -117,16 +118,30 @@ REST_FRAMEWORK = {
     ],
 }
 
+# Refresh diagnostics are intentionally emitted at INFO level so the complete
+# UI -> Upwork -> DB flow is visible in the Django/container logs.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "leads.views": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "job_refresh": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}
+
 # CORS — allow React dev server with credentials
 CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://74.207.229.12:5174,https://crm.inverosoft.com",
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = os.getenv(
     "CSRF_TRUSTED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://74.207.229.12:5174,https://crm.inverosoft.com",
 ).split(",")
 
 # Session cookie settings for SPA auth

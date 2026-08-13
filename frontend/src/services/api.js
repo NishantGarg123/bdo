@@ -10,17 +10,29 @@ const api = axios.create({
   },
 });
 
-let csrfToken = null;
+function getCookieValue(name) {
+  const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+let csrfTokenFetched = false;
 
 export async function fetchCSRFToken() {
-  const response = await api.get('/csrf/');
-  csrfToken = response.data.csrfToken;
-  return csrfToken;
+  // Calls the endpoint decorated with @ensure_csrf_cookie so Django sets
+  // the csrftoken cookie. The actual token value is then read from the
+  // cookie per-request rather than stored in a variable that can go stale.
+  if (!csrfTokenFetched) {
+    await api.get('/csrf/');
+    csrfTokenFetched = true;
+  }
 }
 
 api.interceptors.request.use((config) => {
-  if (csrfToken && ['post', 'put', 'patch', 'delete'].includes(config.method)) {
-    config.headers['X-CSRFToken'] = csrfToken;
+  if (['post', 'put', 'patch', 'delete'].includes(config.method)) {
+    const token = getCookieValue('csrftoken');
+    if (token) {
+      config.headers['X-CSRFToken'] = token;
+    }
   }
   return config;
 });
@@ -37,10 +49,17 @@ export const dashboardAPI = {
 
 export const leadsAPI = {
   getAll: (params) => api.get('/leads/', { params }),
+  getApplied: (params) => api.get('/leads/applied/', { params }),
+  getRejected: (params) => api.get('/leads/rejected/', { params }),
   create: (data) => api.post('/leads/', data),
   getById: (id) => api.get(`/leads/${id}/`),
+  getAnalysis: (id) => api.get(`/leads/${id}/analysis/`),
+  updateAnalysis: (id, data) => api.patch(`/leads/${id}/analysis/`, data),
   update: (id, data) => api.patch(`/leads/${id}/`, data),
+  apply: (id) => api.post(`/leads/${id}/apply/`),
+  reject: (id, rejection_reason) => api.post(`/leads/${id}/reject/`, { rejection_reason }),
   delete: (id) => api.delete(`/leads/${id}/`),
+  bulkRefresh: (ids) => api.post('/leads/bulk-refresh/', { ids }),
 };
 
 export const activityAPI = {
@@ -49,6 +68,18 @@ export const activityAPI = {
 
 export const integrationsAPI = {
   getAll: () => api.get('/integrations/'),
+};
+
+export const projectsAPI = {
+  getAll: (params) => api.get('/projects/', { params }),
+  create: (data) => api.post('/projects/', data),
+  getById: (id) => api.get(`/projects/${id}/`),
+  update: (id, data) => api.patch(`/projects/${id}/`, data),
+  getIssues: (projectId, params) => api.get(`/projects/${projectId}/issues/`, { params }),
+  createIssue: (projectId, data) => api.post(`/projects/${projectId}/issues/`, data),
+  getIssue: (id) => api.get(`/issues/${id}/`),
+  updateIssue: (id, data) => api.patch(`/issues/${id}/`, data),
+  getKnowledgeBase: (params) => api.get('/knowledge-base/', { params }),
 };
 
 export default api;

@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from activity.models import Activity, ActivityType
 from integrations.models import Integration, IntegrationStatus
-from leads.models import Lead, LeadStatus
+from leads.models import Job, LeadStatus
 
 
 class Command(BaseCommand):
@@ -20,7 +20,7 @@ class Command(BaseCommand):
         self._create_admin_user()
         admin = User.objects.get(username="admin")
         self._seed_integrations()
-        self._seed_leads()
+        self._seed_jobs()
         self._seed_activities(admin)
         self.stdout.write(self.style.SUCCESS("Application initialized successfully."))
 
@@ -61,14 +61,15 @@ class Command(BaseCommand):
         )
         self.stdout.write("Seeded integration placeholders.")
 
-    def _seed_leads(self):
-        if Lead.objects.exists():
-            self.stdout.write("Leads already seeded.")
+    def _seed_jobs(self):
+        if Job.objects.exists():
+            self.stdout.write("Jobs already seeded.")
             return
 
         now = timezone.now()
-        sample_leads = [
+        sample_jobs = [
             {
+                "id": "seed-job-1",
                 "title": "Senior Full Stack Developer — React & Django",
                 "url": "https://example.com/jobs/1",
                 "budget": "$5,000 - $8,000",
@@ -82,6 +83,7 @@ class Command(BaseCommand):
                 "total_proposals": 12,
             },
             {
+                "id": "seed-job-2",
                 "title": "Python Backend Engineer for SaaS Platform",
                 "url": "https://example.com/jobs/2",
                 "budget": "$60/hr",
@@ -95,6 +97,7 @@ class Command(BaseCommand):
                 "total_proposals": 8,
             },
             {
+                "id": "seed-job-3",
                 "title": "Mobile App Developer — React Native",
                 "url": "https://example.com/jobs/3",
                 "budget": "$3,000",
@@ -108,6 +111,7 @@ class Command(BaseCommand):
                 "total_proposals": 25,
             },
             {
+                "id": "seed-job-4",
                 "title": "DevOps Engineer — CI/CD Pipeline Setup",
                 "url": "https://example.com/jobs/4",
                 "budget": "$4,000 - $6,000",
@@ -121,6 +125,7 @@ class Command(BaseCommand):
                 "total_proposals": 5,
             },
             {
+                "id": "seed-job-5",
                 "title": "Data Analyst — Power BI Dashboard",
                 "url": "https://example.com/jobs/5",
                 "budget": "$45/hr",
@@ -135,6 +140,7 @@ class Command(BaseCommand):
                 "total_proposals": 18,
             },
             {
+                "id": "seed-job-6",
                 "title": "UI/UX Designer for E-commerce Redesign",
                 "url": "https://example.com/jobs/6",
                 "budget": "$2,500",
@@ -148,6 +154,7 @@ class Command(BaseCommand):
                 "total_proposals": 3,
             },
             {
+                "id": "seed-job-7",
                 "title": "Machine Learning Engineer — NLP Project",
                 "url": "https://example.com/jobs/7",
                 "budget": "$10,000+",
@@ -161,6 +168,7 @@ class Command(BaseCommand):
                 "total_proposals": 7,
             },
             {
+                "id": "seed-job-8",
                 "title": "WordPress Developer — Custom Theme",
                 "url": "https://example.com/jobs/8",
                 "budget": "$1,500",
@@ -175,8 +183,8 @@ class Command(BaseCommand):
             },
         ]
 
-        Lead.objects.bulk_create([Lead(**data) for data in sample_leads])
-        self.stdout.write("Seeded sample leads.")
+        Job.objects.bulk_create([Job(**data) for data in sample_jobs])
+        self.stdout.write("Seeded sample jobs.")
 
     def _seed_activities(self, admin):
         if Activity.objects.exists():
@@ -184,24 +192,24 @@ class Command(BaseCommand):
             return
 
         now = timezone.now()
-        leads = list(Lead.objects.all()[:5])
+        jobs = list(Job.objects.all()[:5])
         activity_data = [
-            (ActivityType.LEAD_CREATED, "Created new lead", 1),
-            (ActivityType.LEAD_UPDATED, "Updated lead details", 3),
+            (ActivityType.LEAD_CREATED, "Created new job", 1),
+            (ActivityType.LEAD_UPDATED, "Updated job details", 3),
             (ActivityType.APPLIED, "Applied to company via portal", 5),
             (ActivityType.NOTES_ADDED, "Added follow-up notes", 2),
             (ActivityType.STATUS_CHANGED, "Changed status to Applied", 7),
-            (ActivityType.LEAD_CREATED, "Created new lead", 0),
+            (ActivityType.LEAD_CREATED, "Created new job", 0),
             (ActivityType.APPLIED, "Submitted application", 10),
             (ActivityType.NOTES_ADDED, "Added interview prep notes", 4),
         ]
 
         for i, (atype, desc, hours_ago) in enumerate(activity_data):
-            lead = leads[i % len(leads)] if leads else None
+            job = jobs[i % len(jobs)] if jobs else None
             activity = Activity.objects.create(
                 activity_type=atype,
                 user=admin,
-                lead=lead,
+                job=job,
                 description=desc,
             )
             Activity.objects.filter(pk=activity.pk).update(
