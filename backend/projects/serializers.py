@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Project, ProjectIssue, IssueStatus
+from .models import Project, ProjectIssue, ProjectFAQ, IssueStatus
 
 
 class ProjectIssueSerializer(serializers.ModelSerializer):
@@ -39,3 +39,10 @@ class ProjectSerializer(serializers.ModelSerializer):
         if unresolved >= 3:
             return "attention"
         return "monitoring"
+
+
+class ProjectFAQSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectFAQ
+        fields = ["id", "project", "question", "answer", "created_at", "updated_at"]
+        read_only_fields = ["project"]
