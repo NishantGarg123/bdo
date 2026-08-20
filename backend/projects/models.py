@@ -40,3 +40,18 @@ class ProjectIssue(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class ProjectFAQ(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="faqs")
+    question = models.CharField(max_length=500)
+    answer = models.TextField()
+    order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "-created_at"]
+
+    def __str__(self):
+        return self.question

@@ -80,6 +80,10 @@ export const projectsAPI = {
   getIssue: (id) => api.get(`/issues/${id}/`),
   updateIssue: (id, data) => api.patch(`/issues/${id}/`, data),
   getKnowledgeBase: (params) => api.get('/knowledge-base/', { params }),
+  getFAQs: (projectId) => api.get(`/projects/${projectId}/faqs/`),
+  createFAQ: (projectId, data) => api.post(`/projects/${projectId}/faqs/`, data),
+  updateFAQ: (id, data) => api.patch(`/faqs/${id}/`, data),
+  deleteFAQ: (id) => api.delete(`/faqs/${id}/`),
 };
 
 export default api;

@@ -2,8 +2,8 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics
 
-from .models import Project, ProjectIssue, IssueStatus
-from .serializers import ProjectSerializer, ProjectIssueSerializer
+from .models import Project, ProjectIssue, ProjectFAQ, IssueStatus
+from .serializers import ProjectSerializer, ProjectIssueSerializer, ProjectFAQSerializer
 
 
 def projects_queryset():
@@ -72,3 +72,23 @@ class KnowledgeBaseListView(generics.ListAPIView):
         if search:
             queryset = queryset.filter(Q(title__icontains=search) | Q(description__icontains=search) | Q(root_cause__icontains=search) | Q(solution__icontains=search) | Q(technical_notes__icontains=search))
         return queryset
+
+
+class FAQListCreateView(generics.ListCreateAPIView):
+    serializer_class = ProjectFAQSerializer
+
+    def get_project(self):
+        return get_object_or_404(Project, pk=self.kwargs["project_pk"])
+
+    def get_queryset(self):
+        return ProjectFAQ.objects.filter(project=self.get_project())
+
+    def perform_create(self, serializer):
+        serializer.save(project=self.get_project())
+
+
+class FAQDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ProjectFAQSerializer
+
+    def get_queryset(self):
+        return ProjectFAQ.objects.all()
