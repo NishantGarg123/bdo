@@ -5,6 +5,7 @@ const navItems = [
   { path: '/leads', label: 'Leads', icon: '◉' },
   { path: '/projects', label: 'Projects', icon: '◆' },
   { path: '/knowledge-base', label: 'Knowledge Base', icon: '▤' },
+  { path: '/agent', label: 'AI Agent', icon: '✦' },
   { path: '/activity', label: 'Activity', icon: '◷' },
   { path: '/integrations', label: 'Integrations', icon: '⬡' },
 ];
