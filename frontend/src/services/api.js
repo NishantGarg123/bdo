@@ -86,4 +86,8 @@ export const projectsAPI = {
   deleteFAQ: (id) => api.delete(`/faqs/${id}/`),
 };
 
+export const agentAPI = {
+  askQuestion: (data) => api.post('/projects/agent/chat/', data),
+};
+
 export default api;

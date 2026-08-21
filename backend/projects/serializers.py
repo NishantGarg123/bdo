@@ -44,5 +44,5 @@ class ProjectSerializer(serializers.ModelSerializer):
 class ProjectFAQSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProjectFAQ
-        fields = ["id", "project", "question", "answer", "created_at", "updated_at"]
-        read_only_fields = ["project"]
+        fields = ["id", "project", "question", "answer", "pinecone_doc_id", "created_at", "updated_at"]
+        read_only_fields = ["project", "pinecone_doc_id"]

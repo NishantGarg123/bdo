@@ -8,6 +8,7 @@ import Leads from './pages/Leads/Leads';
 import Activity from './pages/Activity/Activity';
 import Integrations from './pages/Integrations/Integrations';
 import Projects, { ProjectDetail, IssueDetail, KnowledgeBase } from './pages/Projects/Projects';
+import Agent from './pages/Agent/Agent';
 
 export default function App() {
   return (
@@ -46,6 +47,7 @@ export default function App() {
               <Route path="/projects/:projectId" element={<ProjectDetail />} />
               <Route path="/projects/:projectId/issues/:issueId" element={<IssueDetail />} />
               <Route path="/knowledge-base" element={<KnowledgeBase />} />
+              <Route path="/agent" element={<Agent />} />
             </Route>
           </Route>
 
