@@ -69,31 +69,8 @@ query getJobActivity($jobId: ID!) {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _build_headers() -> dict[str, str]:
-    """Return the HTTP headers required for every Upwork GraphQL request."""
-    access_token = (os.getenv("UPWORK_ACCESS_TOKEN") or "").strip("'\"")
-    if not access_token:
-        raise EnvironmentError(
-            "UPWORK_ACCESS_TOKEN is not set. "
-            "Add it to backend/.env or the project root .env."
-        )
-    return {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-
-
-def _refresh_if_needed(resp: requests.Response) -> bool:
-    """Refresh a rejected access token once and make it immediately available.
-
-    This intentionally returns only whether retrying the original request is
-    appropriate. The caller owns the single retry, preventing refresh loops.
-    """
-    if resp.status_code != 401:
-        return False
-
-    logger.info("Got 401 — attempting token refresh…")
-
+def _do_refresh() -> bool:
+    """Execute a refresh token request to Upwork OAuth endpoint."""
     refresh = (os.getenv("UPWORK_REFRESH_TOKEN") or "").strip("'\"")
     if not refresh:
         logger.error("✗ Token refresh aborted: UPWORK_REFRESH_TOKEN is not set or empty.")
@@ -137,20 +114,46 @@ def _refresh_if_needed(resp: requests.Response) -> bool:
         logger.error("✗ Token refresh request failed with exception: %s", exc)
         return False
 
-    os.environ["UPWORK_ACCESS_TOKEN"] = access_token
-    if tokens.get("refresh_token"):
-        os.environ["UPWORK_REFRESH_TOKEN"] = tokens["refresh_token"]
-
-    try:
-        set_key(_ENV_FILE, "UPWORK_ACCESS_TOKEN", access_token)
-        if tokens.get("refresh_token"):
-            set_key(_ENV_FILE, "UPWORK_REFRESH_TOKEN", tokens["refresh_token"])
-        logger.info("✓ New tokens written to %s", _ENV_FILE)
-    except Exception:  # .env can be read-only in Docker; env values still work.
-        logger.info("Could not write tokens to %s (read-only?); os.environ updated instead.", _ENV_FILE)
-
-    logger.info("✓ Upwork access token refreshed; retrying the failed request once.")
+    new_refresh = tokens.get("refresh_token")
+    _save_tokens_to_env(access_token, new_refresh)
+    logger.info("✓ Upwork token successfully refreshed and saved.")
     return True
+
+
+def _build_headers() -> dict[str, str]:
+    """Return the HTTP headers required for every Upwork GraphQL request.
+
+    If UPWORK_ACCESS_TOKEN is not yet set but UPWORK_REFRESH_TOKEN is available,
+    automatically performs an initial refresh to obtain a valid access token.
+    """
+    access_token = (os.getenv("UPWORK_ACCESS_TOKEN") or "").strip("'\"")
+    if not access_token:
+        logger.info("UPWORK_ACCESS_TOKEN is missing — attempting initial refresh using UPWORK_REFRESH_TOKEN…")
+        if _do_refresh():
+            access_token = (os.getenv("UPWORK_ACCESS_TOKEN") or "").strip("'\"")
+
+    if not access_token:
+        raise EnvironmentError(
+            "UPWORK_ACCESS_TOKEN is not set and could not be refreshed. "
+            "Verify UPWORK_REFRESH_TOKEN, UPWORK_CLIENT_KEY, and UPWORK_CLIENT_SECRET in .env."
+        )
+    return {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+
+def _refresh_if_needed(resp: requests.Response) -> bool:
+    """Refresh a rejected access token once and make it immediately available.
+
+    This intentionally returns only whether retrying the original request is
+    appropriate. The caller owns the single retry, preventing refresh loops.
+    """
+    if resp.status_code != 401:
+        return False
+
+    logger.info("Got 401 Unauthorized from Upwork API — attempting token refresh…")
+    return _do_refresh()
 
 
 def _execute(query: str, variables: dict[str, Any] | None = None) -> dict[str, Any] | None:
