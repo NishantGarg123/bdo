@@ -69,6 +69,75 @@ query getJobActivity($jobId: ID!) {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _update_env_file_direct(path: Path, updates: dict[str, str]) -> bool:
+    """Update key=value pairs in a .env file directly.
+
+    Avoids 'Device or resource busy' (Errno 16) / rename failures caused by
+    atomic file replacement on Docker bind-mounts.
+    """
+    try:
+        if not path.exists() or not path.is_file():
+            return False
+
+        content = path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        remaining = dict(updates)
+        new_lines = []
+
+        for line in lines:
+            stripped = line.strip()
+            matched_key = None
+            for key in list(remaining.keys()):
+                if stripped.startswith(f"{key}=") or stripped.startswith(f"{key} ="):
+                    matched_key = key
+                    break
+
+            if matched_key:
+                val = remaining.pop(matched_key)
+                new_lines.append(f"{matched_key}='{val}'")
+            else:
+                new_lines.append(line)
+
+        for key, val in remaining.items():
+            new_lines.append(f"{key}='{val}'")
+
+        path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        return True
+    except Exception as exc:
+        logger.warning("Could not update %s: %s", path, exc)
+        return False
+
+
+def _save_tokens_to_env(access_token: str, refresh_token: str | None = None) -> None:
+    """Persist updated OAuth tokens to memory and all accessible .env files on disk."""
+    os.environ["UPWORK_ACCESS_TOKEN"] = access_token
+    if refresh_token:
+        os.environ["UPWORK_REFRESH_TOKEN"] = refresh_token
+
+    updates = {"UPWORK_ACCESS_TOKEN": access_token}
+    if refresh_token:
+        updates["UPWORK_REFRESH_TOKEN"] = refresh_token
+
+    candidate_files = [
+        Path("/app/.env"),
+        Path(__file__).resolve().parent.parent / ".env",
+        Path(__file__).resolve().parent.parent.parent / ".env",
+        Path.cwd() / ".env",
+    ]
+
+    updated_any = False
+    for env_path in candidate_files:
+        if _update_env_file_direct(env_path, updates):
+            logger.info("✓ New Upwork tokens written to %s", env_path)
+            updated_any = True
+
+    if not updated_any:
+        logger.warning(
+            "Could not write refreshed tokens to any .env file on disk. "
+            "Tokens are active in memory (os.environ), but will be lost if the container restarts."
+        )
+
+
 def _do_refresh() -> bool:
     """Execute a refresh token request to Upwork OAuth endpoint."""
     refresh = (os.getenv("UPWORK_REFRESH_TOKEN") or "").strip("'\"")
