@@ -283,6 +283,38 @@ class LeadApplyView(APIView):
         return Response(serializer.data)
 
 
+class LeadRevertToAnalyzedView(APIView):
+    """Revert a lead back to Analyzed status."""
+
+    def post(self, request, pk):
+        # Ensure the table exists before we open the atomic block — DDL runs
+        # in autocommit so it cannot be called inside transaction.atomic().
+        _ensure_rejected_leads_table()
+
+        with transaction.atomic():
+            job = get_object_or_404(Job.objects.select_for_update(), pk=pk)
+            old_status = job.status
+            job.status = LeadStatus.ANALYZED
+            job.save(update_fields=["status"])
+
+            # Clean up rejected_leads entry if it was rejected.
+            if old_status == LeadStatus.REJECTED:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM rejected_leads WHERE id = %s",
+                        [str(pk)],
+                    )
+
+            Activity.objects.create(
+                activity_type=ActivityType.STATUS_CHANGED,
+                user=request.user,
+                job=job,
+                description=f"Reverted to analyzed: {job.title}",
+            )
+        serializer = LeadSerializer(job)
+        return Response(serializer.data)
+
+
 
 class LeadRejectView(APIView):
     """Mark a lead as Rejected and record the reason in rejected_leads."""

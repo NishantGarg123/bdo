@@ -3,8 +3,19 @@ import { projectsAPI, agentAPI } from '../../services/api';
 
 export default function Agent() {
   const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState('');
-  const [messages, setMessages] = useState([]);
+  const [selectedProject, setSelectedProject] = useState(() => {
+    return sessionStorage.getItem('agent_selected_project') || '';
+  });
+  const [messages, setMessages] = useState(() => {
+    try {
+      const activeProj = sessionStorage.getItem('agent_selected_project') || '';
+      if (!activeProj) return [];
+      const saved = sessionStorage.getItem(`agent_chat_messages_${activeProj}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -21,13 +32,31 @@ export default function Agent() {
     })();
   }, []);
 
+  // Persist selected project to sessionStorage
   useEffect(() => {
+    sessionStorage.setItem('agent_selected_project', selectedProject);
+  }, [selectedProject]);
+
+  // Persist chat messages to project-specific sessionStorage
+  useEffect(() => {
+    if (selectedProject) {
+      sessionStorage.setItem(`agent_chat_messages_${selectedProject}`, JSON.stringify(messages));
+    }
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, selectedProject]);
 
   const handleProjectChange = (e) => {
-    setSelectedProject(e.target.value);
-    setMessages([]);
+    const val = e.target.value;
+    setSelectedProject(val);
+    sessionStorage.setItem('agent_selected_project', val);
+    
+    // Load previously saved messages for this project or default to []
+    try {
+      const saved = sessionStorage.getItem(`agent_chat_messages_${val}`);
+      setMessages(saved ? JSON.parse(saved) : []);
+    } catch {
+      setMessages([]);
+    }
   };
 
   const selectedProjectName = projects.find((p) => String(p.id) === String(selectedProject))?.name || '';
@@ -38,7 +67,8 @@ export default function Agent() {
     if (!question || !selectedProject || loading) return;
 
     const userMsg = { role: 'user', text: question };
-    setMessages((prev) => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInput('');
     setLoading(true);
 
@@ -65,6 +95,9 @@ export default function Agent() {
 
   const clearChat = () => {
     setMessages([]);
+    if (selectedProject) {
+      sessionStorage.setItem(`agent_chat_messages_${selectedProject}`, JSON.stringify([]));
+    }
   };
 
   const suggestedQuestions = [

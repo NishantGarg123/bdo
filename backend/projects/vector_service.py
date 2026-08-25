@@ -1,11 +1,11 @@
 """
-Vector service for FAQ embeddings using Google Gemini and Pinecone.
+Vector service for FAQ embeddings using OpenAI and Pinecone.
 
 Handles:
-- Generating embeddings via Gemini text-embedding-004
+- Generating embeddings via OpenAI text-embedding-3-small (with dimension=1024)
 - Upserting / deleting FAQ vectors in Pinecone
 - Querying similar FAQs for a project
-- Generating grounded LLM answers via Gemini
+- Generating grounded LLM answers via OpenAI gpt-4o-mini
 """
 
 import logging
@@ -19,18 +19,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "bdo-faq-index")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-EMBEDDING_MODEL = "gemini-embedding-001"  # Stable Gemini embedding model (free tier)
-EMBEDDING_DIMENSION = 1024  # matches Pinecone index dimension (model supports 128-3072)
-CHAT_MODEL = "gemini-3.5-flash-lite"  # Free-tier Gemini chat model (Aug 2026)
+EMBEDDING_MODEL = "text-embedding-3-small"  # OpenAI embedding model
+EMBEDDING_DIMENSION = 1024  # matches Pinecone index dimension (supported by text-embedding-3)
+CHAT_MODEL = "gpt-4o-mini"  # OpenAI fast & affordable chat model
 
 # ---------------------------------------------------------------------------
 # Lazy singletons
 # ---------------------------------------------------------------------------
 _pc_client = None
 _pc_index = None
-_gemini_client = None
+_openai_client = None
 
 
 def _get_pinecone_index():
@@ -43,13 +43,13 @@ def _get_pinecone_index():
     return _pc_index
 
 
-def _get_gemini_client():
-    """Return Google GenAI client (lazily initialised)."""
-    global _gemini_client
-    if _gemini_client is None:
-        from google import genai
-        _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-    return _gemini_client
+def _get_openai_client():
+    """Return OpenAI client (lazily initialised)."""
+    global _openai_client
+    if _openai_client is None:
+        from openai import OpenAI
+        _openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    return _openai_client
 
 
 # ---------------------------------------------------------------------------
@@ -57,18 +57,14 @@ def _get_gemini_client():
 # ---------------------------------------------------------------------------
 
 def get_embedding(text: str) -> list:
-    """Generate an embedding vector for *text* using Gemini."""
-    from google import genai
-
-    client = _get_gemini_client()
-    response = client.models.embed_content(
+    """Generate an embedding vector for *text* using OpenAI."""
+    client = _get_openai_client()
+    response = client.embeddings.create(
+        input=text,
         model=EMBEDDING_MODEL,
-        contents=text,
-        config=genai.types.EmbedContentConfig(
-            output_dimensionality=EMBEDDING_DIMENSION,
-        ),
+        dimensions=EMBEDDING_DIMENSION,
     )
-    return response.embeddings[0].values
+    return response.data[0].embedding
 
 
 # ---------------------------------------------------------------------------
@@ -178,13 +174,11 @@ FAQ Knowledge Base:
 
 def generate_agent_answer(project_name: str, question: str, retrieved_faqs: list, chat_history=None) -> dict:
     """
-    Generate an answer grounded in *retrieved_faqs* using Gemini chat.
+    Generate an answer grounded in *retrieved_faqs* using OpenAI chat completion.
 
     Returns ``{"answer": str, "sources": list[dict]}``.
     """
-    from google import genai
-
-    client = _get_gemini_client()
+    client = _get_openai_client()
 
     # Build FAQ context block
     if retrieved_faqs:
@@ -201,30 +195,23 @@ def generate_agent_answer(project_name: str, question: str, retrieved_faqs: list
 
     system = SYSTEM_PROMPT.format(project_name=project_name, faq_context=faq_context)
 
-    # Build the message list
-    contents = []
+    messages = [{"role": "system", "content": system}]
+
     if chat_history:
         for msg in chat_history:
-            contents.append(genai.types.Content(
-                role=msg["role"],
-                parts=[genai.types.Part(text=msg["text"])],
-            ))
-    contents.append(genai.types.Content(
-        role="user",
-        parts=[genai.types.Part(text=question)],
-    ))
+            role = "assistant" if msg.get("role") == "model" else msg.get("role", "user")
+            messages.append({"role": role, "content": msg.get("text", "")})
 
-    response = client.models.generate_content(
+    messages.append({"role": "user", "content": question})
+
+    response = client.chat.completions.create(
         model=CHAT_MODEL,
-        contents=contents,
-        config=genai.types.GenerateContentConfig(
-            system_instruction=system,
-            temperature=0.3,
-            max_output_tokens=1024,
-        ),
+        messages=messages,
+        temperature=0.3,
+        max_tokens=1024,
     )
 
-    answer_text = response.text or "Sorry, I could not generate an answer."
+    answer_text = response.choices[0].message.content or "Sorry, I could not generate an answer."
 
     sources = [
         {

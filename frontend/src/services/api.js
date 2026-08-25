@@ -58,6 +58,7 @@ export const leadsAPI = {
   update: (id, data) => api.patch(`/leads/${id}/`, data),
   apply: (id) => api.post(`/leads/${id}/apply/`),
   reject: (id, rejection_reason) => api.post(`/leads/${id}/reject/`, { rejection_reason }),
+  revertToAnalyzed: (id) => api.post(`/leads/${id}/revert-to-analyzed/`),
   delete: (id) => api.delete(`/leads/${id}/`),
   bulkRefresh: (ids) => api.post('/leads/bulk-refresh/', { ids }),
 };
