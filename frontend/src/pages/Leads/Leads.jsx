@@ -131,6 +131,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
   // time window and tracking fields) and augments rejected rows with the
   // reasons from the existing rejected-leads endpoint.
   const isRejectedView = fixedStatus === 'rejected' || (!fixedStatus && statusFilter === 'rejected');
+  const isAppliedOrRejectedView = statusFilter === 'applied' || statusFilter === 'rejected';
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -157,6 +158,19 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
   // Row selection & bulk refresh
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [revertingIds, setRevertingIds] = useState(new Set());
+
+  // Auto-dismiss success / error messages after 4 seconds.
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timer = setTimeout(() => setStatusMessage(''), 4000);
+    return () => clearTimeout(timer);
+  }, [statusMessage]);
+  useEffect(() => {
+    if (!statusError) return;
+    const timer = setTimeout(() => setStatusError(''), 4000);
+    return () => clearTimeout(timer);
+  }, [statusError]);
 
   // Keep latest filter values in refs so the fetch effect never has stale closures.
   const filtersRef = useRef({ search, statusFilter, timeFilter, page });
@@ -382,6 +396,32 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
     }
   };
 
+  /** Revert a lead back to Analyzed status */
+  const handleRevertToAnalyzed = async (lead) => {
+    if (revertingIds.has(lead.id)) return;
+    setStatusMessage('');
+    setStatusError('');
+    setRevertingIds((prev) => new Set(prev).add(lead.id));
+    try {
+      await leadsAPI.revertToAnalyzed(lead.id);
+      await fetchLeads.current(1);
+      setPage(1);
+      setStatusMessage(`Reverted "${lead.title}" back to Analyzed.`);
+    } catch (err) {
+      console.error('Failed to revert lead:', err);
+      setStatusError(
+        err?.response?.data?.detail ||
+        'Could not revert this job. Please try again.'
+      );
+    } finally {
+      setRevertingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(lead.id);
+        return next;
+      });
+    }
+  };
+
   const startProposalEdit = () => {
     setProposalDraft(analysis?.proposal_draft || '');
     setSaveError('');
@@ -600,7 +640,7 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                       aria-label="Select all rows on this page"
                     />
                   </th>
-                  {fixedStatus !== 'applied' && fixedStatus !== 'rejected' && <th>Actions</th>}
+                  <th>Actions</th>
                   <th>Title</th>
                   <th>Search Keyword</th>
                   <th>Budget</th>
@@ -634,50 +674,61 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                         aria-label={`Select row for ${lead.title}`}
                       />
                     </td>
-                    {fixedStatus !== 'applied' && fixedStatus !== 'rejected' && (
-                      <td>
-                        <div className="action-buttons">
-                          {/* Quick-apply (✓) button */}
+                    <td>
+                      <div className="action-buttons">
+                        {/* Quick-apply (✓) button */}
+                        <button
+                          type="button"
+                          className={`btn btn-sm btn-apply-check${lead.status === 'applied' || isAppliedOrRejectedView ? ' btn-apply-check--done' : ''}`}
+                          title={isAppliedOrRejectedView ? 'Disabled' : lead.status === 'applied' ? 'Already applied' : 'Mark as Applied'}
+                          disabled={isAppliedOrRejectedView || lead.status === 'applied' || applyingIds.has(lead.id)}
+                          onClick={() => handleQuickApply(lead)}
+                          aria-label="Mark as Applied"
+                        >
+                          {applyingIds.has(lead.id) ? '…' : '✓'}
+                        </button>
+                        {/* Mark as Rejected (×) button */}
+                        <button
+                          type="button"
+                          className={`btn btn-sm btn-reject-check${isAppliedOrRejectedView ? ' btn-reject-check--done' : ''}`}
+                          title={isAppliedOrRejectedView ? 'Disabled' : 'Mark as Rejected'}
+                          onClick={() => { setRejectingLead(lead); setRejectionReason(''); }}
+                          aria-label="Mark as Rejected"
+                          disabled={isAppliedOrRejectedView || (isSubmittingRejection && rejectingLead?.id === lead.id)}
+                        >
+                          {isSubmittingRejection && rejectingLead?.id === lead.id ? '…' : '×'}
+                        </button>
+                        {/* Revert to Analyzed button — shown only in Applied/Rejected views */}
+                        {isAppliedOrRejectedView && (
                           <button
                             type="button"
-                            className={`btn btn-sm btn-apply-check${lead.status === 'applied' ? ' btn-apply-check--done' : ''}`}
-                            title={lead.status === 'applied' ? 'Already applied' : 'Mark as Applied'}
-                            disabled={lead.status === 'applied' || applyingIds.has(lead.id)}
-                            onClick={() => handleQuickApply(lead)}
-                            aria-label="Mark as Applied"
+                            className="btn btn-sm btn-revert-analyzed"
+                            title="Return to Analyzed"
+                            aria-label="Return to Analyzed"
+                            disabled={revertingIds.has(lead.id)}
+                            onClick={() => handleRevertToAnalyzed(lead)}
                           >
-                            {applyingIds.has(lead.id) ? '…' : '✓'}
+                            {revertingIds.has(lead.id) ? '…' : '↩'}
                           </button>
-                          {/* Mark as Rejected (×) button */}
+                        )}
+                        {selectedIds.size === 1 && selectedIds.has(lead.id) && (
                           <button
                             type="button"
-                            className="btn btn-sm btn-reject-check"
-                            title="Mark as Rejected"
-                            onClick={() => { setRejectingLead(lead); setRejectionReason(''); }}
-                            aria-label="Mark as Rejected"
-                            disabled={isSubmittingRejection && rejectingLead?.id === lead.id}
+                            className="btn btn-sm btn-row-refresh"
+                            title="Refresh this selected job"
+                            aria-label="Refresh this selected job"
+                            disabled={isRefreshing}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              handleRefresh();
+                            }}
                           >
-                            {isSubmittingRejection && rejectingLead?.id === lead.id ? '…' : '×'}
+                            {isRefreshing ? <span className="btn-refresh-spinner" aria-hidden="true" /> : '↻'}
                           </button>
-                          {selectedIds.size === 1 && selectedIds.has(lead.id) && (
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-row-refresh"
-                              title="Refresh this selected job"
-                              aria-label="Refresh this selected job"
-                              disabled={isRefreshing}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                handleRefresh();
-                              }}
-                            >
-                              {isRefreshing ? <span className="btn-refresh-spinner" aria-hidden="true" /> : '↻'}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
+                        )}
+                      </div>
+                    </td>
                     <td className="cell-bold cell-title">
                       {lead.url ? (
                         <a
@@ -695,18 +746,18 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                     {false && (
                       <td>
                         {lead.url ? (
-                        <a
-                          href={lead.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="link-external"
-                        >
-                          View
-                        </a>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
+                          <a
+                            href={lead.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="link-external"
+                          >
+                            View
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                     )}
                     <td>{lead.search_keyword || 'NA'}</td>
                     <td>{formatBudget(lead)}</td>
@@ -715,9 +766,9 @@ export default function Leads({ fixedStatus, pageTitle = 'Leads', pageDescriptio
                     <td className="cell-tracking">
                       {lead.interviewing && Number(lead.interview_count) > 0
                         ? <span className="tracking-badge-with-count">
-                            <span className="tracking-badge tracking-badge--yes">Yes</span>
-                            <sup className="tracking-count">{lead.interview_count}</sup>
-                          </span>
+                          <span className="tracking-badge tracking-badge--yes">Yes</span>
+                          <sup className="tracking-count">{lead.interview_count}</sup>
+                        </span>
                         : <span className="tracking-badge tracking-badge--no">No</span>}
                     </td>
                     <td className="cell-tracking">

@@ -8,6 +8,7 @@ from .views import (
     LeadDetailView,
     LeadListCreateView,
     LeadRejectView,
+    LeadRevertToAnalyzedView,
     RejectedLeadListView,
 )
 
@@ -18,6 +19,7 @@ urlpatterns = [
     path("leads/bulk-refresh/", LeadBulkRefreshView.as_view(), name="lead-bulk-refresh"),
     path("leads/<str:pk>/apply/", LeadApplyView.as_view(), name="lead-apply"),
     path("leads/<str:pk>/reject/", LeadRejectView.as_view(), name="lead-reject"),
+    path("leads/<str:pk>/revert-to-analyzed/", LeadRevertToAnalyzedView.as_view(), name="lead-revert-to-analyzed"),
     path("leads/<str:pk>/analysis/", LeadAnalysisView.as_view(), name="lead-analysis"),
     path("leads/<str:pk>/", LeadDetailView.as_view(), name="lead-detail"),
 ]
